@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "WebSearch",
+      "WebFetch(domain:docs.runpod.io)",
+      "WebFetch(domain:www.runpod.io)",
+      "Bash(git init:*)",
+      "Bash(git add:*)"
+    ]
+  }
+}

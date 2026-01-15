@@ -1,0 +1,30 @@
+# Android
+*.iml
+.gradle
+/local.properties
+/.idea
+.DS_Store
+/build
+/captures
+.externalNativeBuild
+.cxx
+local.properties
+
+# App build
+/app/build
+/app/release
+
+# Logs
+*.log
+logcat.txt
+
+# Keystore
+*.jks
+*.keystore
+
+# Misc
+*.apk
+*.aab
+tmpclaude-*
+.claude/
+*.png
