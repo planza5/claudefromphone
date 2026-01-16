@@ -411,26 +411,6 @@ fun PodDetailScreen(
                                     }
                                 }
 
-                                // Terminal SSH Button - usando portMappings y publicIp
-                                val terminalSshPort = pod.portMappings?.get("22")
-                                val terminalSshIp = pod.publicIp
-
-                                if (terminalSshPort != null && terminalSshIp != null) {
-                                    Button(
-                                        onClick = {
-                                            onNavigateToTerminal(terminalSshIp, terminalSshPort)
-                                        },
-                                        modifier = Modifier.fillMaxWidth(),
-                                        colors = ButtonDefaults.buttonColors(
-                                            containerColor = MaterialTheme.colorScheme.primary
-                                        )
-                                    ) {
-                                        Icon(Icons.Default.Terminal, contentDescription = null)
-                                        Spacer(modifier = Modifier.width(8.dp))
-                                        Text("Terminal SSH ($terminalSshIp:$terminalSshPort)")
-                                    }
-                                }
-
                                 Button(
                                     onClick = { showDeleteDialog = true },
                                     modifier = Modifier.fillMaxWidth(),

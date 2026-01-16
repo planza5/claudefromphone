@@ -29,12 +29,13 @@ data class CreatePodUiState(
     val containerDiskGb: Int = 5,
     val networkVolumes: List<NetworkVolume> = emptyList(),
     val selectedNetworkVolume: NetworkVolume? = null,
-    val startScript: String = "/workspace/start_tailscale.sh && exec sleep infinity",
+    val startScript: String = "",
     val isLoadingVolumes: Boolean = false,
     val isLoading: Boolean = false,
     val isCreated: Boolean = false,
     val errorMessage: String? = null,
-    val hasSshKeys: Boolean = false
+    val hasSshKeys: Boolean = false,
+    val sshPublicKey: String? = null
 )
 
 @HiltViewModel
@@ -58,16 +59,10 @@ class CreatePodViewModel @Inject constructor(
         val hasKeys = sshKeyManager.hasKeys()
         val publicKey = sshKeyManager.getPublicKey()
 
-        if (hasKeys && publicKey != null) {
-            val sshSetupCmd = "mkdir -p /root/.ssh && echo '${publicKey.trim()}' >> /root/.ssh/authorized_keys && chmod 600 /root/.ssh/authorized_keys"
-            val fullScript = "$sshSetupCmd && /workspace/start_tailscale.sh && exec sleep infinity"
-            _uiState.value = _uiState.value.copy(
-                hasSshKeys = true,
-                startScript = fullScript
-            )
-        } else {
-            _uiState.value = _uiState.value.copy(hasSshKeys = false)
-        }
+        _uiState.value = _uiState.value.copy(
+            hasSshKeys = hasKeys,
+            sshPublicKey = publicKey
+        )
     }
 
     private fun loadNetworkVolumes() {
@@ -141,9 +136,20 @@ class CreatePodViewModel @Inject constructor(
 
             val networkVolumeId = state.selectedNetworkVolume?.id
 
-            val dockerStartCmd = state.startScript.takeIf { it.isNotBlank() }?.let { script ->
-                listOf("bash", "-c", script)
+            // Configurar clave SSH y luego ejecutar el entrypoint original de Runpod
+            val sshSetup = state.sshPublicKey?.let { key ->
+                "mkdir -p ~/.ssh && echo '${key.trim()}' >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys"
+            } ?: ""
+
+            // Combinar setup SSH + script usuario + entrypoint original
+            val fullScript = buildString {
+                if (sshSetup.isNotBlank()) append("$sshSetup && ")
+                if (state.startScript.isNotBlank()) append("${state.startScript} && ")
+                append("exec /start.sh")  // Ejecutar entrypoint original de Runpod
             }
+
+            val dockerStartCmd = listOf("bash", "-c", fullScript)
+            val envVars: Map<String, String>? = null
 
             val request = if (state.computeType == ComputeType.GPU) {
                 CreatePodRequest(
@@ -153,7 +159,8 @@ class CreatePodViewModel @Inject constructor(
                     containerDiskInGb = state.containerDiskGb,
                     volumeInGb = 0,
                     networkVolumeId = networkVolumeId,
-                    dockerStartCmd = dockerStartCmd
+                    dockerStartCmd = dockerStartCmd,
+                    env = envVars
                 )
             } else {
                 CreatePodRequest(
@@ -164,7 +171,8 @@ class CreatePodViewModel @Inject constructor(
                     containerDiskInGb = state.containerDiskGb,
                     volumeInGb = 0,
                     networkVolumeId = networkVolumeId,
-                    dockerStartCmd = dockerStartCmd
+                    dockerStartCmd = dockerStartCmd,
+                    env = envVars
                 )
             }
 

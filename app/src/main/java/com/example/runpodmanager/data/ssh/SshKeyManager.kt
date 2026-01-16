@@ -11,6 +11,7 @@ import org.bouncycastle.openssl.jcajce.JcaPKCS8Generator
 import java.io.StringWriter
 import java.security.KeyPairGenerator
 import java.security.Security
+import java.security.interfaces.RSAPublicKey
 import java.util.Base64
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -67,8 +68,8 @@ class SshKeyManager @Inject constructor(
         Log.d(TAG, "Clave privada generada, longitud: ${privateKey.length}")
 
         // Convertir clave pública a formato OpenSSH
-        val rsaPublicKey = keyPair.public as java.security.interfaces.RSAPublicKey
-        val publicKeyOpenSSH = encodeOpenSSHPublicKey(rsaPublicKey, KEY_COMMENT)
+        val rsaPublicKey = keyPair.public as RSAPublicKey
+        val publicKeyOpenSSH = encodeRSAPublicKey(rsaPublicKey, KEY_COMMENT)
         Log.d(TAG, "Clave publica generada: ${publicKeyOpenSSH.take(50)}...")
 
         prefs.edit()
@@ -80,27 +81,19 @@ class SshKeyManager @Inject constructor(
         return Pair(privateKey, publicKeyOpenSSH)
     }
 
-    private fun encodeOpenSSHPublicKey(publicKey: java.security.interfaces.RSAPublicKey, comment: String): String {
+    private fun encodeRSAPublicKey(publicKey: RSAPublicKey, comment: String): String {
         val byteArrayOutputStream = java.io.ByteArrayOutputStream()
 
-        // Funcion helper para escribir en formato SSH wire (big-endian con 4 bytes de longitud)
         fun writeSSHString(data: ByteArray) {
-            // Escribir longitud en 4 bytes big-endian
             byteArrayOutputStream.write((data.size shr 24) and 0xFF)
             byteArrayOutputStream.write((data.size shr 16) and 0xFF)
             byteArrayOutputStream.write((data.size shr 8) and 0xFF)
             byteArrayOutputStream.write(data.size and 0xFF)
-            // Escribir datos
             byteArrayOutputStream.write(data)
         }
 
-        // Escribir tipo de clave
         writeSSHString("ssh-rsa".toByteArray(Charsets.US_ASCII))
-
-        // Escribir exponente público
         writeSSHString(publicKey.publicExponent.toByteArray())
-
-        // Escribir módulo
         writeSSHString(publicKey.modulus.toByteArray())
 
         val encodedKey = Base64.getEncoder().encodeToString(byteArrayOutputStream.toByteArray())

@@ -8,14 +8,17 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
+import net.schmizz.sshj.DefaultConfig
 import net.schmizz.sshj.SSHClient
 import net.schmizz.sshj.connection.channel.direct.Session
 import net.schmizz.sshj.transport.verification.PromiscuousVerifier
-import net.schmizz.sshj.userauth.keyprovider.OpenSSHKeyFile
+import net.schmizz.sshj.userauth.keyprovider.PKCS8KeyFile
 import org.bouncycastle.jce.provider.BouncyCastleProvider
 import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.io.PrintWriter
+import java.io.StringReader
+import java.net.InetAddress
 import java.security.Security
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -28,9 +31,18 @@ class SshManager @Inject constructor(
     private val sshKeyManager: SshKeyManager
 ) {
     init {
-        // Registrar BouncyCastle como proveedor de seguridad
-        if (Security.getProvider(BouncyCastleProvider.PROVIDER_NAME) == null) {
-            Security.addProvider(BouncyCastleProvider())
+        // Registrar BouncyCastle como proveedor de seguridad con alta prioridad
+        Security.removeProvider(BouncyCastleProvider.PROVIDER_NAME)
+        Security.insertProviderAt(BouncyCastleProvider(), 1)
+    }
+
+    // Configuración personalizada que excluye algoritmos problemáticos en Android
+    private fun createSshConfig(): DefaultConfig {
+        return DefaultConfig().apply {
+            // Filtrar key exchange algorithms que usan X25519 (no soportado en Android)
+            keyExchangeFactories = keyExchangeFactories.filter { factory ->
+                !factory.name.contains("curve25519", ignoreCase = true)
+            }
         }
     }
 
@@ -55,13 +67,16 @@ class SshManager @Inject constructor(
             Log.d(TAG, "Conectando a $host:$port como $username")
             _connectionState.value = SshConnectionState.Connecting
 
-            val ssh = SSHClient().apply {
+            val ssh = SSHClient(createSshConfig()).apply {
                 // Usar verificador promiscuo (en producción usar verificación real)
                 addHostKeyVerifier(PromiscuousVerifier())
 
                 Log.d(TAG, "Conectando al servidor SSH...")
                 try {
-                    connect(host, port)
+                    // Forzar IPv4 resolviendo la dirección explícitamente
+                    val ipv4Address = InetAddress.getByName(host)
+                    Log.d(TAG, "Resolviendo $host -> ${ipv4Address.hostAddress}")
+                    connect(ipv4Address.hostAddress, port)
                     Log.d(TAG, "Conexion TCP establecida!")
                 } catch (e: Exception) {
                     Log.e(TAG, "Error de conexion TCP: ${e.message}", e)
@@ -74,9 +89,9 @@ class SshManager @Inject constructor(
                     Log.d(TAG, "Clave privada encontrada, longitud: ${privateKey.length}")
                     Log.d(TAG, "Primeros 50 chars: ${privateKey.take(50)}")
                     try {
-                        // Cargar clave desde string usando OpenSSHKeyFile
-                        val keyProvider = OpenSSHKeyFile().apply {
-                            init(privateKey, null)
+                        // Cargar clave desde string usando PKCS8KeyFile
+                        val keyProvider = PKCS8KeyFile().apply {
+                            init(StringReader(privateKey), null)
                         }
                         Log.d(TAG, "Clave privada cargada, autenticando...")
                         authPublickey(username, keyProvider)

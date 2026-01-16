@@ -1,0 +1,24 @@
+==========
+== CUDA ==
+==========
+CUDA Version 11.8.0
+Container image Copyright (c) 2016-2023, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+This container image and its contents are governed by the NVIDIA Deep Learning Container License.
+By pulling and using the container, you accept the terms and conditions of this license:
+https://developer.nvidia.com/ngc/nvidia-deep-learning-container-license
+A copy of this license is made available in this container at /NGC-DL-CONTAINER-LICENSE for your convenience.
+WARNING: The NVIDIA Driver was not detected.  GPU functionality will not be available.
+   Use the NVIDIA Container Toolkit to start this container with GPU support; see
+   https://docs.nvidia.com/datacenter/cloud-native/ .
+Starting Nginx service...
+ * Starting nginx nginx
+   ...done.
+Pod Started
+Setting up SSH...
+ * Starting OpenBSD Secure Shell server sshd
+   ...done.
+SSH host keys:
+ssh-dss AAAAB3NzaC1kc3MAAACBAJirutppITHRaxU+7VscF50nGVJZ/4ZqPRXFxLjbCGKBnGvok+/JiRfOg0iEDg6BXfRDDaim/z2nolsjaRFb/GKOK8VjC3CIHVlk1iUEEhUdOHEzhvpHehQhpUEu+Xi+ZD7P+5F9eSsW29He2MaLtLhwSwVtlyVh2LHpV53harBFAAAAFQCEVQqCU9QTCPClCUYXfJ7npbD7iQAAAIBvkwndXvdrJVoJ6DF35thXqiIoL05tFvI0PPzEavZFRZUikLxK2Aw4EbaR7WDxk+7NtK++c7/PNC5Qm1GCqu+QDxqe80/qQG8FFJscIzQ6h1llT1BEcE3IOdZ7K3tmNJhrNToqZopElGt1c9X4tGJ3COGuJXHsjuV3TVka8POXpAAAAIA0f7H6/sMrsQ5GG941nYb6VsWdUkKAtl5TRRRGW/qTGz6bz3oWV545WxbHTgjDDnLan7zG/REIt7TtKSNBSjBoC6nLdmk0SnIzZxgAfRuyi1nPNp8/RHK5wuEtl8hxz01TR0i8sS0G1UpWJy/sTJxcMl1xCxFIIqCAhT3OvK0eWQ== root@6526b002e70a
+ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBF0dX+gQAdGB2BuUAXo40SYHoy2hgICJMWeatRN1xKFO+ClxC1Vjla+dsc5fZS8pFIRVPk/sm7YPgS88nohgo6k= root@6526b002e70a
+ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJrK5XMZBliALL5W4rj6mlhm53t7iGqboTRe4ZPo8VVg root@6526b002e70a
+ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQDFpfLKaCqqqXGAUnYPWpMYmyiHGB+d2RBHv9kxn9L9lZrtT2sacE2OcOXpnzLYq93U2S6KsrQenU6Bpd5qY7jd4R9o1svCN0abicBRs/C6sXz+NFfCldA3ZwBjhcy4veauFEzzG/9Y3FMOOBE+qHbOPKo1/aiEuEXcuVNz9fUlWxorj5CoKIkU8UK6g7IB9c+T1o2ztmcSVF6iN9ekXYplFi9/y/9lH+cmUF/paodBfntfvPerfLFPPbPWLpWJK9mDVotDsYF95fnsAwdrmyi9NqwmZ3QPy1Y05ZEo6kBsSQ8hrA8uqgx9fCNzORvF01zaM7mWyszRNAHmUAYADVglRY2+mJAC8BuJkP/R9JkJtdnwzZ+YsVt/3H4N4mZ2srREJKzjuQmBBper7nV/BrG4Y/lwPNijqDSSbUKRP9mzEzKUBgZLGPJb3ayV1FGWz4U+Qu8dmoffqt6MB7/4SUp0cRK7axL5BeM3tGrvG6lbwgica3N2BhA2VFcmmMZWCcM= root@6526b002e70a
