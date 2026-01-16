@@ -12,6 +12,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Cloud
+import androidx.compose.material.icons.filled.Code
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -338,6 +339,50 @@ fun CreatePodScreen(
                         valueRange = 5f..100f,
                         steps = 18,
                         enabled = !uiState.isLoading
+                    )
+                }
+            }
+
+            // Start Script
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant
+                )
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.Code,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                        Text(
+                            text = "Script de Inicio",
+                            style = MaterialTheme.typography.titleMedium
+                        )
+                    }
+
+                    OutlinedTextField(
+                        value = uiState.startScript,
+                        onValueChange = viewModel::onStartScriptChange,
+                        label = { Text("Comando o script") },
+                                                modifier = Modifier.fillMaxWidth(),
+                        minLines = 4,
+                        maxLines = 8,
+                        enabled = !uiState.isLoading
+                    )
+
+                    Text(
+                        text = "Opcional: se ejecuta al iniciar el pod",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             }

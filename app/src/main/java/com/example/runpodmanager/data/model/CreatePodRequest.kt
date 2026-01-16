@@ -52,5 +52,8 @@ data class CreatePodRequest(
     val allowedCudaVersions: List<String>? = null,
 
     @SerializedName("networkVolumeId")
-    val networkVolumeId: String? = null
+    val networkVolumeId: String? = null,
+
+    @SerializedName("dockerStartCmd")
+    val dockerStartCmd: List<String>? = null
 )

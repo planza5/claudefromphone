@@ -21,13 +21,14 @@ enum class ComputeType {
 }
 
 data class CreatePodUiState(
-    val name: String = "",
-    val computeType: ComputeType = ComputeType.GPU,
+    val name: String = "pexito",
+    val computeType: ComputeType = ComputeType.CPU,
     val selectedGpu: GpuOption = ComputeTypes.gpuTypes.first(),
     val selectedCpu: CpuOption = ComputeTypes.cpuTypes.first(),
     val containerDiskGb: Int = 5,
     val networkVolumes: List<NetworkVolume> = emptyList(),
     val selectedNetworkVolume: NetworkVolume? = null,
+    val startScript: String = "/workspace/start_tailscale.sh && exec sleep infinity",
     val isLoadingVolumes: Boolean = false,
     val isLoading: Boolean = false,
     val isCreated: Boolean = false,
@@ -98,6 +99,10 @@ class CreatePodViewModel @Inject constructor(
         _uiState.value = _uiState.value.copy(selectedNetworkVolume = volume)
     }
 
+    fun onStartScriptChange(script: String) {
+        _uiState.value = _uiState.value.copy(startScript = script)
+    }
+
     fun createPod() {
         val state = _uiState.value
 
@@ -111,6 +116,10 @@ class CreatePodViewModel @Inject constructor(
 
             val networkVolumeId = state.selectedNetworkVolume?.id
 
+            val dockerStartCmd = state.startScript.takeIf { it.isNotBlank() }?.let { script ->
+                listOf("bash", "-c", script)
+            }
+
             val request = if (state.computeType == ComputeType.GPU) {
                 CreatePodRequest(
                     name = state.name,
@@ -118,7 +127,8 @@ class CreatePodViewModel @Inject constructor(
                     computeType = "GPU",
                     containerDiskInGb = state.containerDiskGb,
                     volumeInGb = 0,
-                    networkVolumeId = networkVolumeId
+                    networkVolumeId = networkVolumeId,
+                    dockerStartCmd = dockerStartCmd
                 )
             } else {
                 CreatePodRequest(
@@ -128,7 +138,8 @@ class CreatePodViewModel @Inject constructor(
                     cpuFlavorIds = listOf(state.selectedCpu.id),
                     containerDiskInGb = state.containerDiskGb,
                     volumeInGb = 0,
-                    networkVolumeId = networkVolumeId
+                    networkVolumeId = networkVolumeId,
+                    dockerStartCmd = dockerStartCmd
                 )
             }
 

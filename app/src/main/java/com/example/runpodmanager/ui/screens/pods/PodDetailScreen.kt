@@ -52,6 +52,9 @@ import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.platform.LocalContext
+import android.content.Intent
+import android.net.Uri
 import androidx.hilt.navigation.compose.hiltViewModel
 import kotlinx.coroutines.launch
 import com.example.runpodmanager.ui.components.LoadingOverlay
@@ -69,6 +72,7 @@ fun PodDetailScreen(
     var showDeleteDialog by remember { mutableStateOf(false) }
     val clipboardManager = LocalClipboardManager.current
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
 
     LaunchedEffect(uiState.errorMessage) {
         uiState.errorMessage?.let {
@@ -310,6 +314,81 @@ fun PodDetailScreen(
                                             Spacer(modifier = Modifier.width(8.dp))
                                             Text("Copiar URL Jupyter")
                                         }
+                                    }
+                                }
+                            }
+                        }
+
+                        // Tailscale SSH Card
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.secondaryContainer
+                            )
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(16.dp),
+                                verticalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Icon(
+                                        Icons.Default.Terminal,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.onSecondaryContainer
+                                    )
+                                    Text(
+                                        text = "SSH via Tailscale",
+                                        style = MaterialTheme.typography.titleMedium,
+                                        color = MaterialTheme.colorScheme.onSecondaryContainer
+                                    )
+                                }
+
+                                val tailscaleHost = "${pod.name}pod"
+                                val sshCommand = "ssh root@$tailscaleHost"
+
+                                Text(
+                                    text = sshCommand,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSecondaryContainer
+                                )
+
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    OutlinedButton(
+                                        onClick = {
+                                            clipboardManager.setText(AnnotatedString(sshCommand))
+                                            scope.launch {
+                                                snackbarHostState.showSnackbar("Comando SSH copiado")
+                                            }
+                                        },
+                                        modifier = Modifier.weight(1f)
+                                    ) {
+                                        Icon(Icons.Default.ContentCopy, contentDescription = null)
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text("Copiar")
+                                    }
+
+                                    Button(
+                                        onClick = {
+                                            try {
+                                                val intent = Intent(Intent.ACTION_VIEW, Uri.parse("ssh://root@$tailscaleHost"))
+                                                context.startActivity(intent)
+                                            } catch (e: Exception) {
+                                                scope.launch {
+                                                    snackbarHostState.showSnackbar("No hay app SSH instalada")
+                                                }
+                                            }
+                                        },
+                                        modifier = Modifier.weight(1f)
+                                    ) {
+                                        Icon(Icons.Default.Terminal, contentDescription = null)
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text("Conectar")
                                     }
                                 }
                             }
