@@ -52,9 +52,6 @@ import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.platform.LocalContext
-import android.content.Intent
-import android.net.Uri
 import androidx.hilt.navigation.compose.hiltViewModel
 import kotlinx.coroutines.launch
 import com.example.runpodmanager.ui.components.LoadingOverlay
@@ -65,14 +62,14 @@ import com.example.runpodmanager.ui.components.StatusChip
 fun PodDetailScreen(
     viewModel: PodDetailViewModel = hiltViewModel(),
     onNavigateBack: () -> Unit,
-    onPodDeleted: () -> Unit = onNavigateBack
+    onPodDeleted: () -> Unit = onNavigateBack,
+    onNavigateToTerminal: (host: String, port: Int) -> Unit = { _, _ -> }
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
     var showDeleteDialog by remember { mutableStateOf(false) }
     val clipboardManager = LocalClipboardManager.current
     val scope = rememberCoroutineScope()
-    val context = LocalContext.current
 
     LaunchedEffect(uiState.errorMessage) {
         uiState.errorMessage?.let {
@@ -210,193 +207,132 @@ fun PodDetailScreen(
                             }
                         }
 
-                        // SSH Card
-                        pod.runtime?.ports?.let { ports ->
-                            val sshPort = ports.find { it.privatePort == 22 }
-                            if (sshPort != null && sshPort.ip != null && sshPort.publicPort != null) {
-                                val sshCommand = "ssh root@${sshPort.ip} -p ${sshPort.publicPort}"
-                                Card(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    colors = CardDefaults.cardColors(
-                                        containerColor = MaterialTheme.colorScheme.primaryContainer
-                                    )
+                        // SSH Card - usando portMappings y publicIp
+                        val sshPublicPort = pod.portMappings?.get("22")
+                        val sshPublicIp = pod.publicIp
+                        if (sshPublicPort != null && sshPublicIp != null) {
+                            val sshCommand = "ssh root@$sshPublicIp -p $sshPublicPort"
+                            Card(
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = CardDefaults.cardColors(
+                                    containerColor = MaterialTheme.colorScheme.primaryContainer
+                                )
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(16.dp),
+                                    verticalArrangement = Arrangement.spacedBy(12.dp)
                                 ) {
-                                    Column(
-                                        modifier = Modifier.padding(16.dp),
-                                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                                     ) {
-                                        Row(
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                        ) {
-                                            Icon(
-                                                Icons.Default.Terminal,
-                                                contentDescription = null,
-                                                tint = MaterialTheme.colorScheme.onPrimaryContainer
-                                            )
-                                            Text(
-                                                text = "Conexion SSH",
-                                                style = MaterialTheme.typography.titleMedium,
-                                                color = MaterialTheme.colorScheme.onPrimaryContainer
-                                            )
-                                        }
-
+                                        Icon(
+                                            Icons.Default.Terminal,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.onPrimaryContainer
+                                        )
                                         Text(
-                                            text = sshCommand,
-                                            style = MaterialTheme.typography.bodyMedium,
+                                            text = "Conexion SSH",
+                                            style = MaterialTheme.typography.titleMedium,
                                             color = MaterialTheme.colorScheme.onPrimaryContainer
                                         )
+                                    }
 
-                                        Button(
+                                    Text(
+                                        text = sshCommand,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                                    )
+
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        OutlinedButton(
                                             onClick = {
                                                 clipboardManager.setText(AnnotatedString(sshCommand))
                                                 scope.launch {
                                                     snackbarHostState.showSnackbar("Comando SSH copiado")
                                                 }
                                             },
-                                            modifier = Modifier.fillMaxWidth()
+                                            modifier = Modifier.weight(1f)
                                         ) {
                                             Icon(Icons.Default.ContentCopy, contentDescription = null)
-                                            Spacer(modifier = Modifier.width(8.dp))
-                                            Text("Copiar comando SSH")
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text("Copiar")
                                         }
-                                    }
-                                }
-                            }
-                        }
-
-                        // Jupyter Lab Card
-                        pod.runtime?.ports?.let { ports ->
-                            val jupyterPort = ports.find { it.privatePort == 8888 }
-                            if (jupyterPort != null && jupyterPort.ip != null && jupyterPort.publicPort != null) {
-                                val jupyterUrl = "http://${jupyterPort.ip}:${jupyterPort.publicPort}"
-                                Card(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    colors = CardDefaults.cardColors(
-                                        containerColor = MaterialTheme.colorScheme.tertiaryContainer
-                                    )
-                                ) {
-                                    Column(
-                                        modifier = Modifier.padding(16.dp),
-                                        verticalArrangement = Arrangement.spacedBy(12.dp)
-                                    ) {
-                                        Row(
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                        ) {
-                                            Text(
-                                                text = "📓",
-                                                fontSize = 20.sp
-                                            )
-                                            Text(
-                                                text = "Jupyter Lab",
-                                                style = MaterialTheme.typography.titleMedium,
-                                                color = MaterialTheme.colorScheme.onTertiaryContainer
-                                            )
-                                        }
-
-                                        Text(
-                                            text = jupyterUrl,
-                                            style = MaterialTheme.typography.bodyMedium,
-                                            color = MaterialTheme.colorScheme.onTertiaryContainer
-                                        )
 
                                         Button(
                                             onClick = {
-                                                clipboardManager.setText(AnnotatedString(jupyterUrl))
-                                                scope.launch {
-                                                    snackbarHostState.showSnackbar("URL de Jupyter copiada")
-                                                }
+                                                onNavigateToTerminal(sshPublicIp, sshPublicPort)
                                             },
-                                            modifier = Modifier.fillMaxWidth()
+                                            modifier = Modifier.weight(1f)
                                         ) {
-                                            Icon(Icons.Default.ContentCopy, contentDescription = null)
-                                            Spacer(modifier = Modifier.width(8.dp))
-                                            Text("Copiar URL Jupyter")
+                                            Icon(Icons.Default.Terminal, contentDescription = null)
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text("Terminal")
                                         }
                                     }
                                 }
                             }
                         }
 
-                        // Tailscale SSH Card
-                        Card(
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = CardDefaults.cardColors(
-                                containerColor = MaterialTheme.colorScheme.secondaryContainer
-                            )
-                        ) {
-                            Column(
-                                modifier = Modifier.padding(16.dp),
-                                verticalArrangement = Arrangement.spacedBy(12.dp)
-                            ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                ) {
-                                    Icon(
-                                        Icons.Default.Terminal,
-                                        contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.onSecondaryContainer
-                                    )
-                                    Text(
-                                        text = "SSH via Tailscale",
-                                        style = MaterialTheme.typography.titleMedium,
-                                        color = MaterialTheme.colorScheme.onSecondaryContainer
-                                    )
-                                }
-
-                                val tailscaleHost = "${pod.name}pod"
-                                val sshCommand = "ssh root@$tailscaleHost"
-
-                                Text(
-                                    text = sshCommand,
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSecondaryContainer
+                        // Jupyter Lab Card - usando portMappings y publicIp
+                        val jupyterPublicPort = pod.portMappings?.get("8888")
+                        val jupyterPublicIp = pod.publicIp
+                        if (jupyterPublicPort != null && jupyterPublicIp != null) {
+                            val jupyterUrl = "http://$jupyterPublicIp:$jupyterPublicPort"
+                            Card(
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = CardDefaults.cardColors(
+                                    containerColor = MaterialTheme.colorScheme.tertiaryContainer
                                 )
-
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(16.dp),
+                                    verticalArrangement = Arrangement.spacedBy(12.dp)
                                 ) {
-                                    OutlinedButton(
-                                        onClick = {
-                                            clipboardManager.setText(AnnotatedString(sshCommand))
-                                            scope.launch {
-                                                snackbarHostState.showSnackbar("Comando SSH copiado")
-                                            }
-                                        },
-                                        modifier = Modifier.weight(1f)
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                                     ) {
-                                        Icon(Icons.Default.ContentCopy, contentDescription = null)
-                                        Spacer(modifier = Modifier.width(4.dp))
-                                        Text("Copiar")
+                                        Text(
+                                            text = "📓",
+                                            fontSize = 20.sp
+                                        )
+                                        Text(
+                                            text = "Jupyter Lab",
+                                            style = MaterialTheme.typography.titleMedium,
+                                            color = MaterialTheme.colorScheme.onTertiaryContainer
+                                        )
                                     }
+
+                                    Text(
+                                        text = jupyterUrl,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onTertiaryContainer
+                                    )
 
                                     Button(
                                         onClick = {
-                                            try {
-                                                val intent = Intent(Intent.ACTION_VIEW, Uri.parse("ssh://root@$tailscaleHost"))
-                                                context.startActivity(intent)
-                                            } catch (e: Exception) {
-                                                scope.launch {
-                                                    snackbarHostState.showSnackbar("No hay app SSH instalada")
-                                                }
+                                            clipboardManager.setText(AnnotatedString(jupyterUrl))
+                                            scope.launch {
+                                                snackbarHostState.showSnackbar("URL de Jupyter copiada")
                                             }
                                         },
-                                        modifier = Modifier.weight(1f)
+                                        modifier = Modifier.fillMaxWidth()
                                     ) {
-                                        Icon(Icons.Default.Terminal, contentDescription = null)
-                                        Spacer(modifier = Modifier.width(4.dp))
-                                        Text("Conectar")
+                                        Icon(Icons.Default.ContentCopy, contentDescription = null)
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text("Copiar URL Jupyter")
                                     }
                                 }
                             }
                         }
 
-                        // Ports Card
-                        pod.runtime?.ports?.let { ports ->
-                            if (ports.isNotEmpty()) {
+                        // Ports Card - usando portMappings y publicIp
+                        pod.portMappings?.let { portMappings ->
+                            if (portMappings.isNotEmpty()) {
                                 Card(
                                     modifier = Modifier.fillMaxWidth(),
                                     colors = CardDefaults.cardColors(
@@ -411,9 +347,10 @@ fun PodDetailScreen(
                                             text = "Puertos",
                                             style = MaterialTheme.typography.titleMedium
                                         )
-                                        ports.forEach { port ->
+                                        val publicIp = pod.publicIp ?: "N/A"
+                                        portMappings.forEach { (privatePort, publicPort) ->
                                             Text(
-                                                text = "${port.privatePort} -> ${port.ip}:${port.publicPort} (${port.type})",
+                                                text = "$privatePort -> $publicIp:$publicPort",
                                                 style = MaterialTheme.typography.bodySmall
                                             )
                                         }
@@ -471,6 +408,26 @@ fun PodDetailScreen(
                                         Icon(Icons.Default.Refresh, contentDescription = null)
                                         Spacer(modifier = Modifier.height(4.dp))
                                         Text("Reiniciar")
+                                    }
+                                }
+
+                                // Terminal SSH Button - usando portMappings y publicIp
+                                val terminalSshPort = pod.portMappings?.get("22")
+                                val terminalSshIp = pod.publicIp
+
+                                if (terminalSshPort != null && terminalSshIp != null) {
+                                    Button(
+                                        onClick = {
+                                            onNavigateToTerminal(terminalSshIp, terminalSshPort)
+                                        },
+                                        modifier = Modifier.fillMaxWidth(),
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = MaterialTheme.colorScheme.primary
+                                        )
+                                    ) {
+                                        Icon(Icons.Default.Terminal, contentDescription = null)
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text("Terminal SSH ($terminalSshIp:$terminalSshPort)")
                                     }
                                 }
 

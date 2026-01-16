@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.example.runpodmanager.data.local.ApiKeyManager
 import com.example.runpodmanager.data.repository.ApiResult
 import com.example.runpodmanager.data.repository.PodRepository
+import com.example.runpodmanager.data.ssh.SshKeyManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -18,13 +19,16 @@ data class SettingsUiState(
     val isLoading: Boolean = false,
     val isSaved: Boolean = false,
     val isValidated: Boolean = false,
-    val errorMessage: String? = null
+    val errorMessage: String? = null,
+    val hasSshKeys: Boolean = false,
+    val sshPublicKey: String? = null
 )
 
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
     private val apiKeyManager: ApiKeyManager,
-    private val podRepository: PodRepository
+    private val podRepository: PodRepository,
+    private val sshKeyManager: SshKeyManager
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(SettingsUiState())
@@ -32,6 +36,7 @@ class SettingsViewModel @Inject constructor(
 
     init {
         loadApiKey()
+        loadSshKeys()
     }
 
     private fun loadApiKey() {
@@ -42,6 +47,29 @@ class SettingsViewModel @Inject constructor(
                 isSaved = savedKey.isNotBlank()
             )
         }
+    }
+
+    private fun loadSshKeys() {
+        _uiState.value = _uiState.value.copy(
+            hasSshKeys = sshKeyManager.hasKeys(),
+            sshPublicKey = sshKeyManager.getPublicKey()
+        )
+    }
+
+    fun generateSshKeys() {
+        val (_, publicKey) = sshKeyManager.generateKeys()
+        _uiState.value = _uiState.value.copy(
+            hasSshKeys = true,
+            sshPublicKey = publicKey
+        )
+    }
+
+    fun deleteSshKeys() {
+        sshKeyManager.deleteKeys()
+        _uiState.value = _uiState.value.copy(
+            hasSshKeys = false,
+            sshPublicKey = null
+        )
     }
 
     fun onApiKeyChange(newKey: String) {

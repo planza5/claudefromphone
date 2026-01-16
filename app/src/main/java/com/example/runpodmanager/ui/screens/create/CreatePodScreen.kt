@@ -13,6 +13,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.filled.Code
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -387,11 +388,38 @@ fun CreatePodScreen(
                 }
             }
 
+            // SSH Keys Warning
+            if (!uiState.hasSshKeys) {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.errorContainer
+                    )
+                ) {
+                    Row(
+                        modifier = Modifier.padding(16.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            Icons.Default.Warning,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.error
+                        )
+                        Text(
+                            text = "Genera claves SSH en Configuracion",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onErrorContainer
+                        )
+                    }
+                }
+            }
+
             // Create Button
             Button(
                 onClick = viewModel::createPod,
                 modifier = Modifier.fillMaxWidth(),
-                enabled = uiState.name.isNotBlank() && !uiState.isLoading
+                enabled = uiState.name.isNotBlank() && !uiState.isLoading && uiState.hasSshKeys
             ) {
                 if (uiState.isLoading) {
                     CircularProgressIndicator(

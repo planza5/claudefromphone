@@ -58,7 +58,13 @@ data class Pod(
     val costPerHr: Double? = null,
 
     @SerializedName("uptimeInSeconds")
-    val uptimeInSeconds: Long? = null
+    val uptimeInSeconds: Long? = null,
+
+    @SerializedName("portMappings")
+    val portMappings: Map<String, Int>? = null,
+
+    @SerializedName("publicIp")
+    val publicIp: String? = null
 )
 
 data class Machine(

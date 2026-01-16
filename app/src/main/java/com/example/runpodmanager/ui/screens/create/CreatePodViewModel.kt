@@ -9,6 +9,7 @@ import com.example.runpodmanager.data.model.GpuOption
 import com.example.runpodmanager.data.model.NetworkVolume
 import com.example.runpodmanager.data.repository.ApiResult
 import com.example.runpodmanager.data.repository.PodRepository
+import com.example.runpodmanager.data.ssh.SshKeyManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -32,12 +33,14 @@ data class CreatePodUiState(
     val isLoadingVolumes: Boolean = false,
     val isLoading: Boolean = false,
     val isCreated: Boolean = false,
-    val errorMessage: String? = null
+    val errorMessage: String? = null,
+    val hasSshKeys: Boolean = false
 )
 
 @HiltViewModel
 class CreatePodViewModel @Inject constructor(
-    private val repository: PodRepository
+    private val repository: PodRepository,
+    private val sshKeyManager: SshKeyManager
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(CreatePodUiState())
@@ -48,6 +51,23 @@ class CreatePodViewModel @Inject constructor(
 
     init {
         loadNetworkVolumes()
+        loadSshKeys()
+    }
+
+    private fun loadSshKeys() {
+        val hasKeys = sshKeyManager.hasKeys()
+        val publicKey = sshKeyManager.getPublicKey()
+
+        if (hasKeys && publicKey != null) {
+            val sshSetupCmd = "mkdir -p /root/.ssh && echo '${publicKey.trim()}' >> /root/.ssh/authorized_keys && chmod 600 /root/.ssh/authorized_keys"
+            val fullScript = "$sshSetupCmd && /workspace/start_tailscale.sh && exec sleep infinity"
+            _uiState.value = _uiState.value.copy(
+                hasSshKeys = true,
+                startScript = fullScript
+            )
+        } else {
+            _uiState.value = _uiState.value.copy(hasSshKeys = false)
+        }
     }
 
     private fun loadNetworkVolumes() {
@@ -108,6 +128,11 @@ class CreatePodViewModel @Inject constructor(
 
         if (state.name.isBlank()) {
             _uiState.value = state.copy(errorMessage = "El nombre es requerido")
+            return
+        }
+
+        if (!state.hasSshKeys) {
+            _uiState.value = state.copy(errorMessage = "Debes generar claves SSH en Configuracion antes de crear un pod")
             return
         }
 

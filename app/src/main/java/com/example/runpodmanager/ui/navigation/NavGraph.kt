@@ -11,6 +11,7 @@ import com.example.runpodmanager.ui.screens.pods.PodDetailScreen
 import com.example.runpodmanager.ui.screens.pods.PodListScreen
 import com.example.runpodmanager.ui.screens.settings.SettingsScreen
 import com.example.runpodmanager.ui.screens.splash.SplashScreen
+import com.example.runpodmanager.ui.screens.terminal.TerminalScreen
 
 sealed class Screen(val route: String) {
     data object Splash : Screen("splash")
@@ -20,6 +21,9 @@ sealed class Screen(val route: String) {
         fun createRoute(podId: String) = "pods/$podId"
     }
     data object CreatePod : Screen("create")
+    data object Terminal : Screen("terminal/{host}/{port}") {
+        fun createRoute(host: String, port: Int) = "terminal/$host/$port"
+    }
 }
 
 @Composable
@@ -85,6 +89,9 @@ fun NavGraph(
                 onPodDeleted = {
                     navController.previousBackStackEntry?.savedStateHandle?.set("refresh", true)
                     navController.popBackStack()
+                },
+                onNavigateToTerminal = { host, port ->
+                    navController.navigate(Screen.Terminal.createRoute(host, port))
                 }
             )
         }
@@ -96,6 +103,18 @@ fun NavGraph(
                     navController.previousBackStackEntry?.savedStateHandle?.set("refresh", true)
                     navController.popBackStack()
                 }
+            )
+        }
+
+        composable(
+            route = Screen.Terminal.route,
+            arguments = listOf(
+                navArgument("host") { type = NavType.StringType },
+                navArgument("port") { type = NavType.IntType }
+            )
+        ) {
+            TerminalScreen(
+                onNavigateBack = { navController.popBackStack() }
             )
         }
     }
