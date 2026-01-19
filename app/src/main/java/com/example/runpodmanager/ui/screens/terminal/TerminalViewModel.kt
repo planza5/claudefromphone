@@ -1,11 +1,18 @@
 package com.example.runpodmanager.ui.screens.terminal
 
+import android.content.Context
+import android.content.Intent
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.runpodmanager.data.ssh.SshConnectionState
+import com.example.runpodmanager.data.ssh.SshForegroundService
 import com.example.runpodmanager.data.ssh.SshManager
+import com.example.runpodmanager.data.ssh.SshTerminalBridge
+import com.termux.terminal.TerminalSession
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -17,19 +24,26 @@ data class TerminalUiState(
     val port: Int = 22,
     val isConnected: Boolean = false,
     val isConnecting: Boolean = false,
-    val terminalOutput: String = "",
     val currentInput: String = "",
-    val errorMessage: String? = null
+    val errorMessage: String? = null,
+    val terminalReady: Boolean = false
 )
 
 @HiltViewModel
 class TerminalViewModel @Inject constructor(
     private val sshManager: SshManager,
+    private val bridge: SshTerminalBridge,
+    @ApplicationContext private val context: Context,
     savedStateHandle: SavedStateHandle
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(TerminalUiState())
     val uiState: StateFlow<TerminalUiState> = _uiState.asStateFlow()
+
+    // Terminal controller and session
+    val controller = TerminalController(context)
+    var session: TerminalSession? = null
+        private set
 
     private val host: String = savedStateHandle.get<String>("host") ?: ""
     private val port: Int = savedStateHandle.get<Int>("port") ?: 22
@@ -40,33 +54,44 @@ class TerminalViewModel @Inject constructor(
         // Observe connection state
         viewModelScope.launch {
             sshManager.connectionState.collect { state ->
-                _uiState.value = when (state) {
-                    is SshConnectionState.Disconnected -> _uiState.value.copy(
-                        isConnected = false,
-                        isConnecting = false
-                    )
-                    is SshConnectionState.Connecting -> _uiState.value.copy(
-                        isConnecting = true,
-                        isConnected = false
-                    )
-                    is SshConnectionState.Connected -> _uiState.value.copy(
-                        isConnected = true,
-                        isConnecting = false,
-                        errorMessage = null
-                    )
-                    is SshConnectionState.Error -> _uiState.value.copy(
-                        isConnected = false,
-                        isConnecting = false,
-                        errorMessage = state.message
-                    )
+                when (state) {
+                    is SshConnectionState.Disconnected -> {
+                        _uiState.value = _uiState.value.copy(
+                            isConnected = false,
+                            isConnecting = false,
+                            terminalReady = false
+                        )
+                        bridge.stopOutputCollection()
+                        stopForegroundService()
+                    }
+                    is SshConnectionState.Connecting -> {
+                        _uiState.value = _uiState.value.copy(
+                            isConnecting = true,
+                            isConnected = false
+                        )
+                    }
+                    is SshConnectionState.Connected -> {
+                        _uiState.value = _uiState.value.copy(
+                            isConnected = true,
+                            isConnecting = false,
+                            errorMessage = null
+                        )
+                        // Start foreground service to keep connection alive
+                        startForegroundService()
+                        // Initialize terminal when connected
+                        initializeTerminal()
+                    }
+                    is SshConnectionState.Error -> {
+                        _uiState.value = _uiState.value.copy(
+                            isConnected = false,
+                            isConnecting = false,
+                            errorMessage = state.message,
+                            terminalReady = false
+                        )
+                        bridge.stopOutputCollection()
+                        stopForegroundService()
+                    }
                 }
-            }
-        }
-
-        // Observe terminal output
-        viewModelScope.launch {
-            sshManager.terminalOutput.collect { output ->
-                _uiState.value = _uiState.value.copy(terminalOutput = output)
             }
         }
 
@@ -76,9 +101,20 @@ class TerminalViewModel @Inject constructor(
         }
     }
 
+    private fun initializeTerminal() {
+        // Create session through bridge
+        val newSession = bridge.createSession(controller, 2000)
+        session = newSession
+        controller.setSession(newSession)
+
+        // Start collecting SSH output and feeding to terminal
+        bridge.startOutputCollection()
+
+        _uiState.value = _uiState.value.copy(terminalReady = true)
+    }
+
     fun connect() {
         viewModelScope.launch {
-            sshManager.clearOutput()
             sshManager.connect(
                 host = _uiState.value.host,
                 port = _uiState.value.port,
@@ -88,7 +124,20 @@ class TerminalViewModel @Inject constructor(
     }
 
     fun disconnect() {
+        bridge.cleanup()
+        session = null
         sshManager.disconnect()
+        stopForegroundService()
+    }
+
+    private fun startForegroundService() {
+        val intent = Intent(context, SshForegroundService::class.java)
+        ContextCompat.startForegroundService(context, intent)
+    }
+
+    private fun stopForegroundService() {
+        val intent = Intent(context, SshForegroundService::class.java)
+        context.stopService(intent)
     }
 
     fun onInputChange(input: String) {
@@ -111,20 +160,9 @@ class TerminalViewModel @Inject constructor(
         }
     }
 
-    fun sendSpecialKey(key: SpecialKey) {
+    fun sendEscapeSequence(bytes: ByteArray) {
         viewModelScope.launch {
-            when (key) {
-                SpecialKey.ENTER -> sshManager.sendCommand("\n")
-                SpecialKey.TAB -> sshManager.sendCommand("\t")
-                SpecialKey.CTRL_C -> sshManager.sendKey('\u0003')
-                SpecialKey.CTRL_D -> sshManager.sendKey('\u0004')
-                SpecialKey.CTRL_Z -> sshManager.sendKey('\u001a')
-                SpecialKey.ESCAPE -> sshManager.sendKey('\u001b')
-                SpecialKey.ARROW_UP -> sshManager.sendCommand("\u001b[A")
-                SpecialKey.ARROW_DOWN -> sshManager.sendCommand("\u001b[B")
-                SpecialKey.ARROW_LEFT -> sshManager.sendCommand("\u001b[D")
-                SpecialKey.ARROW_RIGHT -> sshManager.sendCommand("\u001b[C")
-            }
+            sshManager.sendRawBytes(bytes)
         }
     }
 
@@ -134,11 +172,8 @@ class TerminalViewModel @Inject constructor(
 
     override fun onCleared() {
         super.onCleared()
+        bridge.cleanup()
         sshManager.disconnect()
+        stopForegroundService()
     }
-}
-
-enum class SpecialKey {
-    ENTER, TAB, CTRL_C, CTRL_D, CTRL_Z, ESCAPE,
-    ARROW_UP, ARROW_DOWN, ARROW_LEFT, ARROW_RIGHT
 }

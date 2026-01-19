@@ -8,6 +8,7 @@ import com.example.runpodmanager.data.model.Template
 import com.example.runpodmanager.data.model.UpdatePodRequest
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import retrofit2.Response
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -20,95 +21,52 @@ sealed class ApiResult<out T> {
 class PodRepository @Inject constructor(
     private val api: RunpodApi
 ) {
-    suspend fun getPods(): ApiResult<List<Pod>> = withContext(Dispatchers.IO) {
-        try {
-            val response = api.getPods()
-            if (response.isSuccessful) {
-                ApiResult.Success(response.body() ?: emptyList())
-            } else {
-                ApiResult.Error(
-                    message = response.errorBody()?.string() ?: "Error fetching pods",
-                    code = response.code()
-                )
-            }
-        } catch (e: Exception) {
-            ApiResult.Error(message = e.message ?: "Unknown error")
-        }
-    }
+    suspend fun getPods(): ApiResult<List<Pod>> =
+        safeApiCall("Error fetching pods") { api.getPods() }
+            .mapSuccess { it ?: emptyList() }
 
-    suspend fun getPod(podId: String): ApiResult<Pod> = withContext(Dispatchers.IO) {
-        try {
-            val response = api.getPod(podId)
-            if (response.isSuccessful && response.body() != null) {
-                ApiResult.Success(response.body()!!)
-            } else {
-                ApiResult.Error(
-                    message = response.errorBody()?.string() ?: "Error fetching pod",
-                    code = response.code()
-                )
-            }
-        } catch (e: Exception) {
-            ApiResult.Error(message = e.message ?: "Unknown error")
-        }
-    }
+    suspend fun getPod(podId: String): ApiResult<Pod> =
+        safeApiCall("Error fetching pod") { api.getPod(podId) }
 
-    suspend fun createPod(request: CreatePodRequest): ApiResult<Pod> = withContext(Dispatchers.IO) {
-        try {
-            val response = api.createPod(request)
-            if (response.isSuccessful && response.body() != null) {
-                ApiResult.Success(response.body()!!)
-            } else {
-                ApiResult.Error(
-                    message = response.errorBody()?.string() ?: "Error creating pod",
-                    code = response.code()
-                )
-            }
-        } catch (e: Exception) {
-            ApiResult.Error(message = e.message ?: "Unknown error")
-        }
-    }
+    suspend fun createPod(request: CreatePodRequest): ApiResult<Pod> =
+        safeApiCall("Error creating pod") { api.createPod(request) }
 
     suspend fun updatePod(podId: String, request: UpdatePodRequest): ApiResult<Pod> =
-        withContext(Dispatchers.IO) {
-            try {
-                val response = api.updatePod(podId, request)
-                if (response.isSuccessful && response.body() != null) {
-                    ApiResult.Success(response.body()!!)
-                } else {
-                    ApiResult.Error(
-                        message = response.errorBody()?.string() ?: "Error updating pod",
-                        code = response.code()
-                    )
-                }
-            } catch (e: Exception) {
-                ApiResult.Error(message = e.message ?: "Unknown error")
-            }
-        }
+        safeApiCall("Error updating pod") { api.updatePod(podId, request) }
 
-    suspend fun deletePod(podId: String): ApiResult<Unit> = withContext(Dispatchers.IO) {
-        try {
-            val response = api.deletePod(podId)
-            if (response.isSuccessful) {
-                ApiResult.Success(Unit)
-            } else {
-                ApiResult.Error(
-                    message = response.errorBody()?.string() ?: "Error deleting pod",
-                    code = response.code()
-                )
-            }
-        } catch (e: Exception) {
-            ApiResult.Error(message = e.message ?: "Unknown error")
-        }
-    }
+    suspend fun deletePod(podId: String): ApiResult<Unit> =
+        safeApiCall("Error deleting pod") { api.deletePod(podId) }
+            .mapSuccess { }
 
-    suspend fun startPod(podId: String): ApiResult<Pod> = withContext(Dispatchers.IO) {
+    suspend fun startPod(podId: String): ApiResult<Pod> =
+        safeApiCall("Error starting pod") { api.startPod(podId) }
+
+    suspend fun stopPod(podId: String): ApiResult<Pod> =
+        safeApiCall("Error stopping pod") { api.stopPod(podId) }
+
+    suspend fun restartPod(podId: String): ApiResult<Pod> =
+        safeApiCall("Error restarting pod") { api.restartPod(podId) }
+
+    suspend fun getNetworkVolumes(): ApiResult<List<NetworkVolume>> =
+        safeApiCall("Error fetching network volumes") { api.getNetworkVolumes() }
+            .mapSuccess { it ?: emptyList() }
+
+    suspend fun getTemplates(): ApiResult<List<Template>> =
+        safeApiCall("Error fetching templates") { api.getTemplates() }
+            .mapSuccess { it ?: emptyList() }
+
+    /** Helper para llamadas API seguras con manejo de errores unificado */
+    private suspend fun <T> safeApiCall(
+        errorMessage: String,
+        call: suspend () -> Response<T>
+    ): ApiResult<T> = withContext(Dispatchers.IO) {
         try {
-            val response = api.startPod(podId)
+            val response = call()
             if (response.isSuccessful && response.body() != null) {
                 ApiResult.Success(response.body()!!)
             } else {
                 ApiResult.Error(
-                    message = response.errorBody()?.string() ?: "Error starting pod",
+                    message = response.errorBody()?.string() ?: errorMessage,
                     code = response.code()
                 )
             }
@@ -117,67 +75,11 @@ class PodRepository @Inject constructor(
         }
     }
 
-    suspend fun stopPod(podId: String): ApiResult<Pod> = withContext(Dispatchers.IO) {
-        try {
-            val response = api.stopPod(podId)
-            if (response.isSuccessful && response.body() != null) {
-                ApiResult.Success(response.body()!!)
-            } else {
-                ApiResult.Error(
-                    message = response.errorBody()?.string() ?: "Error stopping pod",
-                    code = response.code()
-                )
-            }
-        } catch (e: Exception) {
-            ApiResult.Error(message = e.message ?: "Unknown error")
-        }
-    }
-
-    suspend fun restartPod(podId: String): ApiResult<Pod> = withContext(Dispatchers.IO) {
-        try {
-            val response = api.restartPod(podId)
-            if (response.isSuccessful && response.body() != null) {
-                ApiResult.Success(response.body()!!)
-            } else {
-                ApiResult.Error(
-                    message = response.errorBody()?.string() ?: "Error restarting pod",
-                    code = response.code()
-                )
-            }
-        } catch (e: Exception) {
-            ApiResult.Error(message = e.message ?: "Unknown error")
-        }
-    }
-
-    suspend fun getNetworkVolumes(): ApiResult<List<NetworkVolume>> = withContext(Dispatchers.IO) {
-        try {
-            val response = api.getNetworkVolumes()
-            if (response.isSuccessful) {
-                ApiResult.Success(response.body() ?: emptyList())
-            } else {
-                ApiResult.Error(
-                    message = response.errorBody()?.string() ?: "Error fetching network volumes",
-                    code = response.code()
-                )
-            }
-        } catch (e: Exception) {
-            ApiResult.Error(message = e.message ?: "Unknown error")
-        }
-    }
-
-    suspend fun getTemplates(): ApiResult<List<Template>> = withContext(Dispatchers.IO) {
-        try {
-            val response = api.getTemplates()
-            if (response.isSuccessful) {
-                ApiResult.Success(response.body() ?: emptyList())
-            } else {
-                ApiResult.Error(
-                    message = response.errorBody()?.string() ?: "Error fetching templates",
-                    code = response.code()
-                )
-            }
-        } catch (e: Exception) {
-            ApiResult.Error(message = e.message ?: "Unknown error")
+    /** Extension para transformar el resultado exitoso */
+    private inline fun <T, R> ApiResult<T>.mapSuccess(transform: (T) -> R): ApiResult<R> {
+        return when (this) {
+            is ApiResult.Success -> ApiResult.Success(transform(data))
+            is ApiResult.Error -> this
         }
     }
 }

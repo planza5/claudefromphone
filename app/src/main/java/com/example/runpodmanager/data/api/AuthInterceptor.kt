@@ -1,8 +1,6 @@
 package com.example.runpodmanager.data.api
 
 import com.example.runpodmanager.data.local.ApiKeyManager
-import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.runBlocking
 import okhttp3.Interceptor
 import okhttp3.Response
 import javax.inject.Inject
@@ -14,9 +12,7 @@ class AuthInterceptor @Inject constructor(
 ) : Interceptor {
 
     override fun intercept(chain: Interceptor.Chain): Response {
-        val apiKey = runBlocking {
-            apiKeyManager.apiKey.first()
-        }
+        val apiKey = apiKeyManager.getApiKeySync()
 
         val request = chain.request().newBuilder()
             .apply {

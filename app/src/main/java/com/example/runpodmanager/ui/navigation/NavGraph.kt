@@ -51,6 +51,7 @@ fun NavGraph(
 
         composable(Screen.Settings.route) {
             SettingsScreen(
+                onNavigateBack = { navController.popBackStack() },
                 onNavigateToPods = {
                     navController.navigate(Screen.PodList.route) {
                         popUpTo(Screen.Settings.route) { inclusive = true }

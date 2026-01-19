@@ -12,28 +12,20 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Surface
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.automirrored.filled.Send
-import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.LinkOff
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -41,19 +33,82 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import com.termux.view.TerminalView
+
+@Composable
+fun ExtraKeysBar(
+    onKey: (ByteArray) -> Unit,
+    onRequestFocus: () -> Unit
+) {
+    val keyColor = Color(0xFF2D2D2D)
+    val textColor = Color(0xFF4EC9B0)
+
+    val sendKey: (ByteArray) -> Unit = { bytes ->
+        onKey(bytes)
+        onRequestFocus()
+    }
+
+    Surface(
+        color = Color(0xFF1A1A1A),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Row(
+            modifier = Modifier
+                .horizontalScroll(rememberScrollState())
+                .padding(horizontal = 4.dp, vertical = 2.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            ExtraKey("/", keyColor, textColor) { sendKey("/".toByteArray()) }
+            ExtraKey("TAB", keyColor, textColor) { sendKey(byteArrayOf(0x09)) }
+            ExtraKey("\u2191", keyColor, textColor) { sendKey(byteArrayOf(0x1B, 0x5B, 0x41)) }
+            ExtraKey("\u2193", keyColor, textColor) { sendKey(byteArrayOf(0x1B, 0x5B, 0x42)) }
+            ExtraKey("\u2190", keyColor, textColor) { sendKey(byteArrayOf(0x1B, 0x5B, 0x44)) }
+            ExtraKey("\u2192", keyColor, textColor) { sendKey(byteArrayOf(0x1B, 0x5B, 0x43)) }
+            ExtraKey("C-c", keyColor, textColor) { sendKey(byteArrayOf(0x03)) }
+            ExtraKey("~", keyColor, textColor) { sendKey("~".toByteArray()) }
+            ExtraKey("ESC", keyColor, textColor) { sendKey(byteArrayOf(0x1B)) }
+        }
+    }
+}
+
+@Composable
+fun ExtraKey(
+    label: String,
+    backgroundColor: Color,
+    textColor: Color,
+    onClick: () -> Unit
+) {
+    Surface(
+        onClick = onClick,
+        color = backgroundColor,
+        shape = RoundedCornerShape(4.dp),
+        modifier = Modifier.padding(2.dp)
+    ) {
+        Text(
+            text = label,
+            color = textColor,
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+            style = MaterialTheme.typography.bodyMedium
+        )
+    }
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -63,18 +118,13 @@ fun TerminalScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
-    val scrollState = rememberScrollState()
+    val lifecycleOwner = LocalLifecycleOwner.current
 
     LaunchedEffect(uiState.errorMessage) {
         uiState.errorMessage?.let {
             snackbarHostState.showSnackbar(it)
             viewModel.clearError()
         }
-    }
-
-    // Auto-scroll to bottom when output changes
-    LaunchedEffect(uiState.terminalOutput) {
-        scrollState.animateScrollTo(scrollState.maxValue)
     }
 
     Scaffold(
@@ -124,21 +174,15 @@ fun TerminalScreen(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         containerColor = Color(0xFF0D0D0D)
     ) { paddingValues ->
-        Column(
+        Box(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
                 .imePadding()
+                .background(Color(0xFF0D0D0D))
         ) {
-            // Terminal output area
-            Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxWidth()
-                    .background(Color(0xFF0D0D0D))
-                    .padding(8.dp)
-            ) {
-                if (uiState.isConnecting) {
+            when {
+                uiState.isConnecting -> {
                     Column(
                         modifier = Modifier.fillMaxSize(),
                         horizontalAlignment = Alignment.CenterHorizontally,
@@ -151,7 +195,9 @@ fun TerminalScreen(
                             color = Color(0xFF4EC9B0)
                         )
                     }
-                } else if (!uiState.isConnected && uiState.terminalOutput.isEmpty()) {
+                }
+
+                !uiState.isConnected -> {
                     Column(
                         modifier = Modifier.fillMaxSize(),
                         horizontalAlignment = Alignment.CenterHorizontally,
@@ -170,116 +216,86 @@ fun TerminalScreen(
                             )
                         ) {
                             Icon(Icons.Default.Link, contentDescription = null)
-                            Spacer(modifier = Modifier.width(8.dp))
+                            Spacer(modifier = Modifier.height(8.dp))
                             Text("Conectar")
                         }
                     }
-                } else {
-                    Text(
-                        text = uiState.terminalOutput,
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .verticalScroll(scrollState)
-                            .horizontalScroll(rememberScrollState()),
-                        style = TextStyle(
-                            fontFamily = FontFamily.Monospace,
-                            fontSize = 12.sp,
-                            color = Color(0xFFD4D4D4),
-                            lineHeight = 16.sp
+                }
+
+                uiState.terminalReady && viewModel.session != null -> {
+                    val controller = viewModel.controller
+                    val backgroundColor = Color(0xFF0D0D0D).toArgb()
+                    var terminalView by remember { mutableStateOf<TerminalView?>(null) }
+
+                    DisposableEffect(lifecycleOwner) {
+                        val observer = LifecycleEventObserver { _, event ->
+                            val view = controller.getView()
+                            when (event) {
+                                Lifecycle.Event.ON_RESUME -> {
+                                    view?.onScreenUpdated()
+                                    view?.setTerminalCursorBlinkerState(true, true)
+                                }
+                                Lifecycle.Event.ON_PAUSE -> {
+                                    view?.setTerminalCursorBlinkerState(false, true)
+                                }
+                                else -> {}
+                            }
+                        }
+                        lifecycleOwner.lifecycle.addObserver(observer)
+                        onDispose {
+                            lifecycleOwner.lifecycle.removeObserver(observer)
+                            controller.detachView()
+                        }
+                    }
+
+                    LaunchedEffect(terminalView) {
+                        terminalView?.let {
+                            kotlinx.coroutines.delay(500)
+                            controller.showKeyboard()
+                        }
+                    }
+
+                    Column(modifier = Modifier.fillMaxSize()) {
+                        AndroidView(
+                            factory = { ctx ->
+                                TerminalView(ctx, null).apply {
+                                    setBackgroundColor(backgroundColor)
+                                    controller.attachView(this)
+                                    controller.setTextSize(56)
+                                    isFocusable = true
+                                    isFocusableInTouchMode = true
+                                    isClickable = true
+                                    setOnClickListener { controller.showKeyboard() }
+                                    terminalView = this
+                                }
+                            },
+                            update = { view -> view.onScreenUpdated() },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .weight(1f)
                         )
-                    )
+                        ExtraKeysBar(
+                            onKey = { sequence -> viewModel.sendEscapeSequence(sequence) },
+                            onRequestFocus = { controller.showKeyboard() }
+                        )
+                    }
                 }
-            }
 
-            // Special keys row
-            if (uiState.isConnected) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(Color(0xFF252526))
-                        .horizontalScroll(rememberScrollState())
-                        .padding(4.dp),
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    SpecialKeyButton("Tab") { viewModel.sendSpecialKey(SpecialKey.TAB) }
-                    SpecialKeyButton("Ctrl+C") { viewModel.sendSpecialKey(SpecialKey.CTRL_C) }
-                    SpecialKeyButton("Ctrl+D") { viewModel.sendSpecialKey(SpecialKey.CTRL_D) }
-                    SpecialKeyButton("Ctrl+Z") { viewModel.sendSpecialKey(SpecialKey.CTRL_Z) }
-                    SpecialKeyButton("Esc") { viewModel.sendSpecialKey(SpecialKey.ESCAPE) }
-                    SpecialKeyButton("↑") { viewModel.sendSpecialKey(SpecialKey.ARROW_UP) }
-                    SpecialKeyButton("↓") { viewModel.sendSpecialKey(SpecialKey.ARROW_DOWN) }
-                    SpecialKeyButton("←") { viewModel.sendSpecialKey(SpecialKey.ARROW_LEFT) }
-                    SpecialKeyButton("→") { viewModel.sendSpecialKey(SpecialKey.ARROW_RIGHT) }
-                }
-            }
-
-            // Input area
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(Color(0xFF1E1E1E))
-                    .padding(8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                OutlinedTextField(
-                    value = uiState.currentInput,
-                    onValueChange = viewModel::onInputChange,
-                    modifier = Modifier.weight(1f),
-                    placeholder = {
+                else -> {
+                    Column(
+                        modifier = Modifier.fillMaxSize(),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        CircularProgressIndicator(color = Color(0xFF4EC9B0))
+                        Spacer(modifier = Modifier.height(16.dp))
                         Text(
-                            if (uiState.isConnected) "Escribe un comando..." else "Desconectado",
-                            color = Color.Gray
+                            text = "Inicializando terminal...",
+                            color = Color(0xFF4EC9B0)
                         )
-                    },
-                    enabled = uiState.isConnected,
-                    singleLine = true,
-                    textStyle = TextStyle(
-                        fontFamily = FontFamily.Monospace,
-                        fontSize = 14.sp,
-                        color = Color.White
-                    ),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = Color(0xFF4EC9B0),
-                        unfocusedBorderColor = Color(0xFF3C3C3C),
-                        cursorColor = Color(0xFF4EC9B0),
-                        focusedContainerColor = Color(0xFF252526),
-                        unfocusedContainerColor = Color(0xFF252526)
-                    ),
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
-                    keyboardActions = KeyboardActions(onSend = { viewModel.sendCommand() })
-                )
-
-                Spacer(modifier = Modifier.width(8.dp))
-
-                IconButton(
-                    onClick = viewModel::sendCommand,
-                    enabled = uiState.isConnected && uiState.currentInput.isNotEmpty()
-                ) {
-                    Icon(
-                        Icons.AutoMirrored.Filled.Send,
-                        contentDescription = "Enviar",
-                        tint = if (uiState.isConnected && uiState.currentInput.isNotEmpty())
-                            Color(0xFF4EC9B0) else Color.Gray
-                    )
+                    }
                 }
             }
         }
-    }
-}
-
-@Composable
-private fun SpecialKeyButton(
-    text: String,
-    onClick: () -> Unit
-) {
-    FilledTonalButton(
-        onClick = onClick,
-        colors = ButtonDefaults.filledTonalButtonColors(
-            containerColor = Color(0xFF3C3C3C),
-            contentColor = Color(0xFFD4D4D4)
-        ),
-        modifier = Modifier.height(36.dp)
-    ) {
-        Text(text, fontSize = 12.sp, fontFamily = FontFamily.Monospace)
     }
 }

@@ -29,7 +29,6 @@ data class CreatePodUiState(
     val containerDiskGb: Int = 5,
     val networkVolumes: List<NetworkVolume> = emptyList(),
     val selectedNetworkVolume: NetworkVolume? = null,
-    val startScript: String = "",
     val isLoadingVolumes: Boolean = false,
     val isLoading: Boolean = false,
     val isCreated: Boolean = false,
@@ -114,10 +113,6 @@ class CreatePodViewModel @Inject constructor(
         _uiState.value = _uiState.value.copy(selectedNetworkVolume = volume)
     }
 
-    fun onStartScriptChange(script: String) {
-        _uiState.value = _uiState.value.copy(startScript = script)
-    }
-
     fun createPod() {
         val state = _uiState.value
 
@@ -141,40 +136,23 @@ class CreatePodViewModel @Inject constructor(
                 "mkdir -p ~/.ssh && echo '${key.trim()}' >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys"
             } ?: ""
 
-            // Combinar setup SSH + script usuario + entrypoint original
+            // Combinar setup SSH + setup_env + tailscale + entrypoint original
             val fullScript = buildString {
                 if (sshSetup.isNotBlank()) append("$sshSetup && ")
-                if (state.startScript.isNotBlank()) append("${state.startScript} && ")
-                append("exec /start.sh")  // Ejecutar entrypoint original de Runpod
+                append("source /workspace/setup_env.sh && /workspace/start_tailscale.sh && exec /start.sh")
             }
 
-            val dockerStartCmd = listOf("bash", "-c", fullScript)
-            val envVars: Map<String, String>? = null
-
-            val request = if (state.computeType == ComputeType.GPU) {
-                CreatePodRequest(
-                    name = state.name,
-                    gpuTypeIds = listOf(state.selectedGpu.id),
-                    computeType = "GPU",
-                    containerDiskInGb = state.containerDiskGb,
-                    volumeInGb = 0,
-                    networkVolumeId = networkVolumeId,
-                    dockerStartCmd = dockerStartCmd,
-                    env = envVars
-                )
-            } else {
-                CreatePodRequest(
-                    name = state.name,
-                    gpuTypeIds = emptyList(),
-                    computeType = "CPU",
-                    cpuFlavorIds = listOf(state.selectedCpu.id),
-                    containerDiskInGb = state.containerDiskGb,
-                    volumeInGb = 0,
-                    networkVolumeId = networkVolumeId,
-                    dockerStartCmd = dockerStartCmd,
-                    env = envVars
-                )
-            }
+            val isGpu = state.computeType == ComputeType.GPU
+            val request = CreatePodRequest(
+                name = state.name,
+                gpuTypeIds = if (isGpu) listOf(state.selectedGpu.id) else emptyList(),
+                computeType = if (isGpu) "GPU" else "CPU",
+                cpuFlavorIds = if (!isGpu) listOf(state.selectedCpu.id) else null,
+                containerDiskInGb = state.containerDiskGb,
+                volumeInGb = 0,
+                networkVolumeId = networkVolumeId,
+                dockerStartCmd = listOf("bash", "-c", fullScript)
+            )
 
             when (val result = repository.createPod(request)) {
                 is ApiResult.Success -> {

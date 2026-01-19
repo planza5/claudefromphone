@@ -10,7 +10,12 @@
       "Bash(git remote add:*)",
       "Bash(git branch:*)",
       "Bash(git push:*)",
-      "Bash(adb devices:*)"
+      "Bash(adb devices:*)",
+      "Bash(./gradlew assembleDebug:*)",
+      "Bash(tree:*)",
+      "Bash(.\\\\gradlew assembleDebug:*)",
+      "Bash(gradlew.bat assembleDebug:*)",
+      "Bash(./gradlew.bat assembleDebug:*)"
     ]
   }
 }

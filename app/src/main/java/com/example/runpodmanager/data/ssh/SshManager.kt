@@ -1,28 +1,34 @@
 package com.example.runpodmanager.data.ssh
 
 import android.util.Log
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.InputStream
+import java.io.OutputStream
 import net.schmizz.sshj.DefaultConfig
 import net.schmizz.sshj.SSHClient
 import net.schmizz.sshj.connection.channel.direct.Session
 import net.schmizz.sshj.transport.verification.PromiscuousVerifier
 import net.schmizz.sshj.userauth.keyprovider.PKCS8KeyFile
 import org.bouncycastle.jce.provider.BouncyCastleProvider
-import java.io.BufferedReader
-import java.io.InputStreamReader
-import java.io.PrintWriter
 import java.io.StringReader
 import java.net.InetAddress
 import java.security.Security
 import javax.inject.Inject
 import javax.inject.Singleton
-import kotlin.coroutines.coroutineContext
 
 private const val TAG = "SshManager"
 
@@ -46,17 +52,25 @@ class SshManager @Inject constructor(
         }
     }
 
+    // Scope independiente para el lector de output - no se cancela con el ViewModel
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private var readerJob: Job? = null
+
     private var sshClient: SSHClient? = null
     private var session: Session? = null
     private var shell: Session.Shell? = null
-    private var writer: PrintWriter? = null
-    private var reader: BufferedReader? = null
+    private var inputStream: InputStream? = null
+    private var outputStream: OutputStream? = null
 
     private val _connectionState = MutableStateFlow<SshConnectionState>(SshConnectionState.Disconnected)
     val connectionState: StateFlow<SshConnectionState> = _connectionState.asStateFlow()
 
-    private val _terminalOutput = MutableStateFlow("")
-    val terminalOutput: StateFlow<String> = _terminalOutput.asStateFlow()
+    private val _rawOutput = MutableSharedFlow<ByteArray>(
+        replay = 0,
+        extraBufferCapacity = 64,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST
+    )
+    val rawOutput: SharedFlow<ByteArray> = _rawOutput.asSharedFlow()
 
     suspend fun connect(
         host: String,
@@ -70,6 +84,9 @@ class SshManager @Inject constructor(
             val ssh = SSHClient(createSshConfig()).apply {
                 // Usar verificador promiscuo (en producción usar verificación real)
                 addHostKeyVerifier(PromiscuousVerifier())
+
+                // Keepalive para mantener conexión activa
+                connection.keepAlive.keepAliveInterval = 30 // cada 30 segundos
 
                 Log.d(TAG, "Conectando al servidor SSH...")
                 try {
@@ -123,13 +140,13 @@ class SshManager @Inject constructor(
 
             // Configurar streams
             shell?.let { sh ->
-                writer = PrintWriter(sh.outputStream, true)
-                reader = BufferedReader(InputStreamReader(sh.inputStream))
+                inputStream = sh.inputStream
+                outputStream = sh.outputStream
             }
 
             _connectionState.value = SshConnectionState.Connected
 
-            // Iniciar lectura de salida
+            // Iniciar lectura de salida en scope independiente
             startOutputReader()
 
             Result.success(Unit)
@@ -140,61 +157,60 @@ class SshManager @Inject constructor(
         }
     }
 
-    private suspend fun startOutputReader(): Unit = withContext(Dispatchers.IO) {
-        try {
-            Log.d(TAG, "Iniciando lector de salida...")
-            val buffer = CharArray(1024)
+    private fun startOutputReader() {
+        readerJob?.cancel()
+        readerJob = scope.launch {
+            try {
+                Log.d(TAG, "Iniciando lector de salida en scope independiente...")
+                val buffer = ByteArray(4096)
+                val stream = inputStream ?: return@launch
 
-            while (coroutineContext.isActive && shell?.isOpen == true) {
-                try {
-                    if (reader?.ready() == true) {
-                        val read = reader?.read(buffer) ?: 0
-                        if (read > 0) {
-                            val text = String(buffer, 0, read)
-                            _terminalOutput.value += text
+                while (isActive && shell?.isOpen == true) {
+                    try {
+                        val available = stream.available()
+                        if (available > 0) {
+                            val read = stream.read(buffer, 0, minOf(available, buffer.size))
+                            if (read > 0) {
+                                _rawOutput.emit(buffer.copyOf(read))
+                            }
+                        } else {
+                            delay(10)
                         }
-                    } else {
-                        delay(50)
+                    } catch (e: Exception) {
+                        if (shell?.isOpen == true) {
+                            Log.e(TAG, "Error leyendo salida: ${e.message}")
+                        }
+                        break
                     }
-                } catch (e: Exception) {
-                    if (shell?.isOpen == true) {
-                        Log.e(TAG, "Error leyendo salida: ${e.message}")
-                    }
-                    break
+                }
+                Log.d(TAG, "Lector de salida terminado")
+            } catch (e: Exception) {
+                if (shell?.isOpen == true) {
+                    Log.e(TAG, "Error en lector: ${e.message}", e)
+                    _connectionState.value = SshConnectionState.Error(e.message ?: "Read error")
                 }
             }
-            Log.d(TAG, "Lector de salida terminado")
-        } catch (e: Exception) {
-            if (shell?.isOpen == true) {
-                Log.e(TAG, "Error en lector: ${e.message}", e)
-                _connectionState.value = SshConnectionState.Error(e.message ?: "Read error")
-            }
         }
     }
 
-    suspend fun sendCommand(command: String) = withContext(Dispatchers.IO) {
-        try {
-            Log.d(TAG, "Enviando comando: $command")
-            writer?.println(command)
-            writer?.flush()
-        } catch (e: Exception) {
-            Log.e(TAG, "Error enviando comando: ${e.message}", e)
-            _connectionState.value = SshConnectionState.Error(e.message ?: "Send error")
-        }
-    }
+    suspend fun sendCommand(command: String) = sendRawBytes(command.toByteArray(Charsets.UTF_8))
 
-    suspend fun sendKey(key: Char) = withContext(Dispatchers.IO) {
+    suspend fun sendKey(key: Char) = sendRawBytes(key.toString().toByteArray(Charsets.UTF_8))
+
+    suspend fun sendRawBytes(bytes: ByteArray) = withContext(Dispatchers.IO) {
         try {
-            writer?.print(key)
-            writer?.flush()
+            outputStream?.write(bytes)
+            outputStream?.flush()
         } catch (e: Exception) {
-            Log.e(TAG, "Error enviando tecla: ${e.message}", e)
+            Log.e(TAG, "Error enviando datos: ${e.message}", e)
             _connectionState.value = SshConnectionState.Error(e.message ?: "Send error")
         }
     }
 
     fun disconnect() {
         Log.d(TAG, "Desconectando...")
+        readerJob?.cancel()
+        readerJob = null
         try {
             shell?.close()
             session?.close()
@@ -205,15 +221,11 @@ class SshManager @Inject constructor(
             shell = null
             session = null
             sshClient = null
-            writer = null
-            reader = null
+            inputStream = null
+            outputStream = null
             _connectionState.value = SshConnectionState.Disconnected
             Log.d(TAG, "Desconectado")
         }
-    }
-
-    fun clearOutput() {
-        _terminalOutput.value = ""
     }
 
     fun isConnected(): Boolean = sshClient?.isConnected == true && shell?.isOpen == true

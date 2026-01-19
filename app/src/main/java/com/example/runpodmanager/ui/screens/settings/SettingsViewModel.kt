@@ -21,7 +21,8 @@ data class SettingsUiState(
     val isValidated: Boolean = false,
     val errorMessage: String? = null,
     val hasSshKeys: Boolean = false,
-    val sshPublicKey: String? = null
+    val sshPublicKey: String? = null,
+    val sshPrivateKey: String? = null
 )
 
 @HiltViewModel
@@ -52,15 +53,17 @@ class SettingsViewModel @Inject constructor(
     private fun loadSshKeys() {
         _uiState.value = _uiState.value.copy(
             hasSshKeys = sshKeyManager.hasKeys(),
-            sshPublicKey = sshKeyManager.getPublicKey()
+            sshPublicKey = sshKeyManager.getPublicKey(),
+            sshPrivateKey = sshKeyManager.getPrivateKey()
         )
     }
 
     fun generateSshKeys() {
-        val (_, publicKey) = sshKeyManager.generateKeys()
+        val (privateKey, publicKey) = sshKeyManager.generateKeys()
         _uiState.value = _uiState.value.copy(
             hasSshKeys = true,
-            sshPublicKey = publicKey
+            sshPublicKey = publicKey,
+            sshPrivateKey = privateKey
         )
     }
 
@@ -68,7 +71,8 @@ class SettingsViewModel @Inject constructor(
         sshKeyManager.deleteKeys()
         _uiState.value = _uiState.value.copy(
             hasSshKeys = false,
-            sshPublicKey = null
+            sshPublicKey = null,
+            sshPrivateKey = null
         )
     }
 

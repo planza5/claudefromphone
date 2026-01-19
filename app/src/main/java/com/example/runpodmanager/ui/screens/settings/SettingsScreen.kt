@@ -15,6 +15,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ContentCopy
@@ -65,6 +66,7 @@ import kotlinx.coroutines.launch
 @Composable
 fun SettingsScreen(
     viewModel: SettingsViewModel = hiltViewModel(),
+    onNavigateBack: () -> Unit,
     onNavigateToPods: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -90,6 +92,14 @@ fun SettingsScreen(
         topBar = {
             TopAppBar(
                 title = { Text("Configuracion") },
+                navigationIcon = {
+                    IconButton(onClick = onNavigateBack) {
+                        Icon(
+                            Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Volver"
+                        )
+                    }
+                },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.primaryContainer,
                     titleContentColor = MaterialTheme.colorScheme.onPrimaryContainer
@@ -276,20 +286,36 @@ fun SettingsScreen(
                             ) {
                                 Icon(Icons.Default.ContentCopy, contentDescription = null)
                                 Spacer(modifier = Modifier.width(4.dp))
-                                Text("Copiar")
+                                Text("Copiar Publica")
                             }
 
                             OutlinedButton(
-                                onClick = viewModel::deleteSshKeys,
-                                modifier = Modifier.weight(1f),
-                                colors = ButtonDefaults.outlinedButtonColors(
-                                    contentColor = MaterialTheme.colorScheme.error
-                                )
+                                onClick = {
+                                    uiState.sshPrivateKey?.let {
+                                        clipboardManager.setText(AnnotatedString(it))
+                                        scope.launch {
+                                            snackbarHostState.showSnackbar("Clave privada copiada")
+                                        }
+                                    }
+                                },
+                                modifier = Modifier.weight(1f)
                             ) {
-                                Icon(Icons.Default.Delete, contentDescription = null)
+                                Icon(Icons.Default.ContentCopy, contentDescription = null)
                                 Spacer(modifier = Modifier.width(4.dp))
-                                Text("Eliminar")
+                                Text("Copiar Privada")
                             }
+                        }
+
+                        OutlinedButton(
+                            onClick = viewModel::deleteSshKeys,
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = ButtonDefaults.outlinedButtonColors(
+                                contentColor = MaterialTheme.colorScheme.error
+                            )
+                        ) {
+                            Icon(Icons.Default.Delete, contentDescription = null)
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Eliminar Claves")
                         }
                     } else {
                         Button(

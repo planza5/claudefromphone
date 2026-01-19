@@ -22,17 +22,28 @@ class ApiKeyManager @Inject constructor(
         private val API_KEY = stringPreferencesKey("api_key")
     }
 
+    // Cache para acceso síncrono (usado por AuthInterceptor)
+    @Volatile
+    private var cachedApiKey: String = ""
+
     val apiKey: Flow<String> = context.dataStore.data.map { preferences ->
-        preferences[API_KEY] ?: ""
+        val key = preferences[API_KEY] ?: ""
+        cachedApiKey = key
+        key
     }
 
+    /** Obtener API key de forma síncrona (para interceptores) */
+    fun getApiKeySync(): String = cachedApiKey
+
     suspend fun saveApiKey(key: String) {
+        cachedApiKey = key
         context.dataStore.edit { preferences ->
             preferences[API_KEY] = key
         }
     }
 
     suspend fun clearApiKey() {
+        cachedApiKey = ""
         context.dataStore.edit { preferences ->
             preferences.remove(API_KEY)
         }
