@@ -91,6 +91,18 @@ class SshTerminalBridge @Inject constructor(
     }
 
     /**
+     * TerminalSessionOutput implementation.
+     * Called when the terminal size changes - resize the SSH PTY.
+     */
+    override fun onResize(columns: Int, rows: Int) {
+        Log.d(TAG, "Terminal resized to ${columns}x${rows}, updating SSH PTY")
+        // Ejecutar en IO thread para evitar bloquear UI
+        scope.launch {
+            sshManager.resizePTY(columns, rows)
+        }
+    }
+
+    /**
      * Clean up resources.
      */
     fun cleanup() {

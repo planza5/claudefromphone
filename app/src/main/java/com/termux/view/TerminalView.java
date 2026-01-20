@@ -86,6 +86,11 @@ public final class TerminalView extends View {
     /** If non-zero, this is the last unicode code point received if that was a combining character. */
     int mCombiningAccent;
 
+    /** Timestamp of last space character for double-space-to-tab detection. */
+    private long mLastSpaceTime = 0;
+    /** Threshold in ms for double-space detection. */
+    private static final long DOUBLE_SPACE_THRESHOLD_MS = 300;
+
     /**
      * The current AutoFill type returned for {@link View#getAutofillType()} by {@link #getAutofillType()}.
      *
@@ -391,6 +396,21 @@ public final class TerminalView extends View {
                         }
                     } else {
                         codePoint = firstChar;
+                    }
+
+                    // Double-space to TAB detection
+                    if (codePoint == ' ') {
+                        long now = System.currentTimeMillis();
+                        if (now - mLastSpaceTime < DOUBLE_SPACE_THRESHOLD_MS) {
+                            // Double space detected: send backspace to delete first space, then TAB
+                            mLastSpaceTime = 0; // Reset to avoid triple-space issues
+                            inputCodePoint(KEY_EVENT_SOURCE_SOFT_KEYBOARD, 0x7F, false, false); // DEL/Backspace
+                            inputCodePoint(KEY_EVENT_SOURCE_SOFT_KEYBOARD, 0x09, false, false); // TAB
+                            continue;
+                        }
+                        mLastSpaceTime = now;
+                    } else {
+                        mLastSpaceTime = 0; // Reset on non-space
                     }
 
                     // Check onKeyDown() for details.

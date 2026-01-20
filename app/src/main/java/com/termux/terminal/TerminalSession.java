@@ -122,6 +122,9 @@ public final class TerminalSession extends TerminalOutput {
         } else {
             if (!mExternalSession) {
                 JNI.setPtyWindowSize(mTerminalFileDescriptor, rows, columns, cellWidthPixels, cellHeightPixels);
+            } else if (mExternalOutput != null) {
+                // Notify external transport (SSH) of size change
+                mExternalOutput.onResize(columns, rows);
             }
             mEmulator.resize(columns, rows, cellWidthPixels, cellHeightPixels);
         }

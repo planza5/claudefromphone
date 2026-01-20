@@ -166,6 +166,13 @@ class TerminalViewModel @Inject constructor(
         }
     }
 
+    fun sendVoiceCommand(text: String) {
+        viewModelScope.launch {
+            // Envía en minúsculas (sin Enter)
+            sshManager.sendCommand(text.lowercase())
+        }
+    }
+
     fun clearError() {
         _uiState.value = _uiState.value.copy(errorMessage = null)
     }

@@ -130,9 +130,11 @@ class SshManager @Inject constructor(
             // Iniciar sesion y shell
             Log.d(TAG, "Iniciando sesion...")
             session = ssh.startSession().apply {
-                allocateDefaultPTY()
+                // Usar xterm-256color para mejor soporte de secuencias ANSI
+                // Dimensiones iniciales: 80x24, se pueden ajustar después
+                allocatePTY("xterm-256color", 80, 24, 0, 0, emptyMap())
             }
-            Log.d(TAG, "PTY asignado!")
+            Log.d(TAG, "PTY asignado con xterm-256color!")
 
             Log.d(TAG, "Iniciando shell...")
             shell = session?.startShell()
@@ -229,6 +231,25 @@ class SshManager @Inject constructor(
     }
 
     fun isConnected(): Boolean = sshClient?.isConnected == true && shell?.isOpen == true
+
+    /**
+     * Redimensionar el PTY cuando el terminal cambia de tamaño.
+     * Esto es importante para que las aplicaciones como vim, htop, etc.
+     * se rendericen correctamente.
+     */
+    fun resizePTY(cols: Int, rows: Int) {
+        if (shell?.isOpen != true) {
+            Log.d(TAG, "Shell no está abierto, ignorando resize")
+            return
+        }
+        try {
+            shell?.changeWindowDimensions(cols, rows, 0, 0)
+            Log.d(TAG, "PTY redimensionado a ${cols}x${rows}")
+        } catch (e: Exception) {
+            // Solo log, no desconectar por error de resize
+            Log.w(TAG, "Error redimensionando PTY (no crítico): ${e.message}")
+        }
+    }
 }
 
 sealed class SshConnectionState {
