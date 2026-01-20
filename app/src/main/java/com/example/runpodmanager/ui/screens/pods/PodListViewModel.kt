@@ -9,6 +9,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -32,97 +33,57 @@ class PodListViewModel @Inject constructor(
     }
 
     fun loadPods() {
-        viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(isLoading = true, errorMessage = null)
-            when (val result = repository.getPods()) {
-                is ApiResult.Success -> {
-                    _uiState.value = _uiState.value.copy(
-                        pods = result.data,
-                        isLoading = false
-                    )
-                }
-                is ApiResult.Error -> {
-                    _uiState.value = _uiState.value.copy(
-                        isLoading = false,
-                        errorMessage = result.message
-                    )
-                }
-            }
-        }
+        fetchPods(isRefresh = false)
     }
 
     fun refresh() {
+        fetchPods(isRefresh = true)
+    }
+
+    private fun fetchPods(isRefresh: Boolean) {
         viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(isRefreshing = true, errorMessage = null)
+            _uiState.update {
+                if (isRefresh) it.copy(isRefreshing = true, errorMessage = null)
+                else it.copy(isLoading = true, errorMessage = null)
+            }
+
             when (val result = repository.getPods()) {
-                is ApiResult.Success -> {
-                    _uiState.value = _uiState.value.copy(
-                        pods = result.data,
-                        isRefreshing = false
-                    )
+                is ApiResult.Success -> _uiState.update {
+                    it.copy(pods = result.data, isLoading = false, isRefreshing = false)
                 }
-                is ApiResult.Error -> {
-                    _uiState.value = _uiState.value.copy(
-                        isRefreshing = false,
-                        errorMessage = result.message
-                    )
+                is ApiResult.Error -> _uiState.update {
+                    it.copy(isLoading = false, isRefreshing = false, errorMessage = result.message)
                 }
             }
         }
     }
 
     fun deletePod(podId: String) {
-        viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(isLoading = true)
-            when (val result = repository.deletePod(podId)) {
-                is ApiResult.Success -> {
-                    loadPods()
-                }
-                is ApiResult.Error -> {
-                    _uiState.value = _uiState.value.copy(
-                        isLoading = false,
-                        errorMessage = result.message
-                    )
-                }
-            }
-        }
+        executePodAction { repository.deletePod(podId) }
     }
 
     fun stopPod(podId: String) {
-        viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(isLoading = true)
-            when (val result = repository.stopPod(podId)) {
-                is ApiResult.Success -> {
-                    loadPods()
-                }
-                is ApiResult.Error -> {
-                    _uiState.value = _uiState.value.copy(
-                        isLoading = false,
-                        errorMessage = result.message
-                    )
-                }
-            }
-        }
+        executePodAction { repository.stopPod(podId) }
     }
 
     fun startPod(podId: String) {
+        executePodAction { repository.startPod(podId) }
+    }
+
+    private fun <T> executePodAction(action: suspend () -> ApiResult<T>) {
         viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(isLoading = true)
-            when (val result = repository.startPod(podId)) {
-                is ApiResult.Success -> {
-                    loadPods()
-                }
-                is ApiResult.Error -> {
-                    _uiState.value = _uiState.value.copy(
-                        isLoading = false,
-                        errorMessage = result.message
-                    )
+            _uiState.update { it.copy(isLoading = true) }
+
+            when (val result = action()) {
+                is ApiResult.Success -> loadPods()
+                is ApiResult.Error -> _uiState.update {
+                    it.copy(isLoading = false, errorMessage = result.message)
                 }
             }
         }
     }
 
     fun clearError() {
-        _uiState.value = _uiState.value.copy(errorMessage = null)
+        _uiState.update { it.copy(errorMessage = null) }
     }
 }

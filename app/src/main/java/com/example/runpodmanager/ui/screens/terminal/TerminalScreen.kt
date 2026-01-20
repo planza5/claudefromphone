@@ -1,12 +1,7 @@
 package com.example.runpodmanager.ui.screens.terminal
 
 import android.Manifest
-import android.content.Intent
 import android.content.pm.PackageManager
-import android.os.Bundle
-import android.speech.RecognitionListener
-import android.speech.RecognizerIntent
-import android.speech.SpeechRecognizer
 import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -49,6 +44,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -65,24 +61,40 @@ import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import com.example.runpodmanager.data.whisper.WhisperManager
+import com.example.runpodmanager.data.whisper.WhisperManagerListener
+import com.example.runpodmanager.data.whisper.WhisperState
 import com.termux.view.TerminalView
 import kotlinx.coroutines.launch
-import java.util.Locale
 
 @Composable
 fun ExtraKeysBar(
     onKey: (ByteArray) -> Unit,
     onRequestFocus: () -> Unit,
     onMicClick: () -> Unit,
-    isListening: Boolean = false
+    whisperState: WhisperState = WhisperState.Idle
 ) {
     val keyColor = Color(0xFF2D2D2D)
     val textColor = Color(0xFF4EC9B0)
     val micActiveColor = Color(0xFFE53935)
+    val micProcessingColor = Color(0xFFFF9800)
+    val micLoadingColor = Color(0xFF9E9E9E)
 
     val sendKey: (ByteArray) -> Unit = { bytes ->
         onKey(bytes)
         onRequestFocus()
+    }
+
+    val micColor = when (whisperState) {
+        is WhisperState.Listening -> micActiveColor
+        is WhisperState.Processing -> micProcessingColor
+        is WhisperState.Loading -> micLoadingColor
+        else -> keyColor
+    }
+
+    val micTint = when (whisperState) {
+        is WhisperState.Listening, is WhisperState.Processing -> Color.White
+        else -> textColor
     }
 
     Surface(
@@ -96,21 +108,32 @@ fun ExtraKeysBar(
             horizontalArrangement = Arrangement.spacedBy(4.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Botón de micrófono
+            // Botón de micrófono con Whisper
             Surface(
                 onClick = onMicClick,
-                color = if (isListening) micActiveColor else keyColor,
+                color = micColor,
                 shape = RoundedCornerShape(4.dp),
                 modifier = Modifier.padding(2.dp)
             ) {
-                Icon(
-                    imageVector = Icons.Default.Mic,
-                    contentDescription = "Voz",
-                    tint = if (isListening) Color.White else textColor,
-                    modifier = Modifier
-                        .padding(horizontal = 12.dp, vertical = 8.dp)
-                        .size(20.dp)
-                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Mic,
+                        contentDescription = "Voz (Whisper)",
+                        tint = micTint,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    if (whisperState is WhisperState.Processing) {
+                        Spacer(modifier = Modifier.size(4.dp))
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(12.dp),
+                            color = Color.White,
+                            strokeWidth = 2.dp
+                        )
+                    }
+                }
             }
 
             ExtraKey("↵", keyColor, textColor) { sendKey(byteArrayOf(0x0D)) } // Enter
@@ -160,93 +183,62 @@ fun TerminalScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
-    // Estado para el reconocimiento de voz
-    var isListening by remember { mutableStateOf(false) }
+    // Whisper state
+    var whisperState by remember { mutableStateOf<WhisperState>(WhisperState.Idle) }
+    var amplitude by remember { mutableFloatStateOf(0f) }
 
-    // SpeechRecognizer sin diálogo
-    val speechRecognizer = remember {
-        SpeechRecognizer.createSpeechRecognizer(context)
+    // Initialize WhisperManager
+    val whisperManager = remember {
+        WhisperManager(context).apply {
+            setListener(object : WhisperManagerListener {
+                override fun onStateChanged(state: WhisperState) {
+                    whisperState = state
+                    Log.d("Whisper", "State: $state")
+                }
+
+                override fun onTranscriptionResult(text: String) {
+                    Log.d("Whisper", "Resultado: $text")
+                    if (text.isNotBlank()) {
+                        viewModel.sendVoiceCommand(text)
+                    }
+                }
+
+                override fun onError(message: String) {
+                    scope.launch { snackbarHostState.showSnackbar(message) }
+                }
+
+                override fun onAmplitudeUpdate(amp: Float) {
+                    amplitude = amp
+                }
+            })
+        }
     }
 
-    // Configurar el listener del reconocimiento
+    // Initialize Whisper model on first composition
+    LaunchedEffect(Unit) {
+        whisperManager.initialize()
+    }
+
+    // Cleanup on dispose
     DisposableEffect(Unit) {
-        val listener = object : RecognitionListener {
-            override fun onReadyForSpeech(params: Bundle?) {
-                Log.d("VoiceInput", "Listo para escuchar")
-            }
-
-            override fun onBeginningOfSpeech() {
-                Log.d("VoiceInput", "Comenzó a hablar")
-            }
-
-            override fun onRmsChanged(rmsdB: Float) {}
-
-            override fun onBufferReceived(buffer: ByteArray?) {}
-
-            override fun onEndOfSpeech() {
-                Log.d("VoiceInput", "Terminó de hablar")
-                isListening = false
-            }
-
-            override fun onError(error: Int) {
-                Log.e("VoiceInput", "Error de reconocimiento: $error")
-                isListening = false
-                val errorMsg = when (error) {
-                    SpeechRecognizer.ERROR_NO_MATCH -> "No se reconoció ninguna palabra"
-                    SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "Tiempo de espera agotado"
-                    else -> "Error de reconocimiento"
-                }
-                scope.launch {
-                    snackbarHostState.showSnackbar(errorMsg)
-                }
-            }
-
-            override fun onResults(results: Bundle?) {
-                isListening = false
-                val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
-                val spokenText = matches?.firstOrNull()
-                if (!spokenText.isNullOrEmpty()) {
-                    Log.d("VoiceInput", "Texto reconocido: $spokenText")
-                    viewModel.sendVoiceCommand(spokenText)
-                }
-            }
-
-            override fun onPartialResults(partialResults: Bundle?) {}
-
-            override fun onEvent(eventType: Int, params: Bundle?) {}
-        }
-        speechRecognizer.setRecognitionListener(listener)
-
         onDispose {
-            speechRecognizer.destroy()
+            whisperManager.release()
         }
     }
 
-    // Launcher para el permiso de audio
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { isGranted ->
-        if (!isGranted) {
-            scope.launch {
-                snackbarHostState.showSnackbar("Se necesita permiso de micrófono para usar voz")
-            }
+        if (isGranted) {
+            whisperManager.startListening()
+        } else {
+            scope.launch { snackbarHostState.showSnackbar("Se necesita permiso de microfono para usar voz") }
         }
     }
 
-    // Función para iniciar el reconocimiento de voz (sin diálogo)
     fun startVoiceRecognition() {
-        // Verificar si el reconocimiento de voz está disponible
-        if (!SpeechRecognizer.isRecognitionAvailable(context)) {
-            scope.launch {
-                snackbarHostState.showSnackbar("Reconocimiento de voz no disponible")
-            }
-            return
-        }
-
-        // Verificar permiso
         val hasPermission = ContextCompat.checkSelfPermission(
-            context,
-            Manifest.permission.RECORD_AUDIO
+            context, Manifest.permission.RECORD_AUDIO
         ) == PackageManager.PERMISSION_GRANTED
 
         if (!hasPermission) {
@@ -254,22 +246,10 @@ fun TerminalScreen(
             return
         }
 
-        // Iniciar reconocimiento silencioso (sin diálogo)
-        isListening = true
-        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-            putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault())
-            putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
-            putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, false)
-        }
-        try {
-            speechRecognizer.startListening(intent)
-        } catch (e: Exception) {
-            isListening = false
-            scope.launch {
-                snackbarHostState.showSnackbar("Error al iniciar reconocimiento")
-            }
-            Log.e("VoiceInput", "Error starting speech recognizer", e)
+        if (whisperManager.isListening()) {
+            whisperManager.stopListening()
+        } else {
+            whisperManager.startListening()
         }
     }
 
@@ -431,7 +411,7 @@ fun TerminalScreen(
                             onKey = { sequence -> viewModel.sendEscapeSequence(sequence) },
                             onRequestFocus = { controller.showKeyboard() },
                             onMicClick = { startVoiceRecognition() },
-                            isListening = isListening
+                            whisperState = whisperState
                         )
                     }
                 }

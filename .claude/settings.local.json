@@ -15,7 +15,18 @@
       "Bash(tree:*)",
       "Bash(.\\\\gradlew assembleDebug:*)",
       "Bash(gradlew.bat assembleDebug:*)",
-      "Bash(./gradlew.bat assembleDebug:*)"
+      "Bash(./gradlew.bat assembleDebug:*)",
+      "Bash(grep:*)",
+      "Bash(xargs cat:*)",
+      "Bash(wc:*)",
+      "Bash(git commit -m \"$\\(cat <<''EOF''\nfeat: Add voice commands and improve terminal ANSI support\n\n- Add silent voice recognition \\(no Google dialog\\)\n- Voice commands sent in lowercase without auto-enter\n- Double-space converts to TAB in terminal\n- Replace \"/\" key with Enter in extra keys bar\n- Use xterm-256color for better ANSI escape sequence support\n- Add PTY resize synchronization with terminal size\n- Add RECORD_AUDIO permission for voice input\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(git tag:*)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "WebFetch(domain:deepwiki.com)",
+      "Bash(curl:*)",
+      "Bash(adb logcat:*)",
+      "Bash(xxd:*)"
     ]
   }
 }

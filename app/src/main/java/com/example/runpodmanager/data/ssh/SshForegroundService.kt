@@ -79,6 +79,15 @@ class SshForegroundService : Service() {
     }
 
     private fun createNotification(): Notification {
+        return buildNotification("Conexion SSH activa")
+    }
+
+    fun updateNotification(host: String) {
+        val notification = buildNotification("Conectado a $host")
+        getSystemService(NotificationManager::class.java).notify(SSH_NOTIFICATION_ID, notification)
+    }
+
+    private fun buildNotification(contentText: String): Notification {
         val pendingIntent = PendingIntent.getActivity(
             this,
             0,
@@ -90,35 +99,12 @@ class SshForegroundService : Service() {
 
         return NotificationCompat.Builder(this, SSH_NOTIFICATION_CHANNEL_ID)
             .setContentTitle("SSH Conectado")
-            .setContentText("Conexion SSH activa")
+            .setContentText(contentText)
             .setSmallIcon(R.drawable.ic_launcher_foreground)
             .setOngoing(true)
             .setContentIntent(pendingIntent)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .build()
-    }
-
-    fun updateNotification(host: String) {
-        val notification = NotificationCompat.Builder(this, SSH_NOTIFICATION_CHANNEL_ID)
-            .setContentTitle("SSH Conectado")
-            .setContentText("Conectado a $host")
-            .setSmallIcon(R.drawable.ic_launcher_foreground)
-            .setOngoing(true)
-            .setContentIntent(
-                PendingIntent.getActivity(
-                    this,
-                    0,
-                    Intent(this, MainActivity::class.java).apply {
-                        flags = Intent.FLAG_ACTIVITY_SINGLE_TOP
-                    },
-                    PendingIntent.FLAG_IMMUTABLE
-                )
-            )
-            .setPriority(NotificationCompat.PRIORITY_LOW)
-            .build()
-
-        val notificationManager = getSystemService(NotificationManager::class.java)
-        notificationManager.notify(SSH_NOTIFICATION_ID, notification)
     }
 
     private fun acquireWakeLock() {

@@ -10,6 +10,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -38,79 +39,41 @@ class PodDetailViewModel @Inject constructor(
 
     fun loadPod() {
         viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(isLoading = true, errorMessage = null)
+            _uiState.update { it.copy(isLoading = true, errorMessage = null) }
+
             when (val result = repository.getPod(podId)) {
-                is ApiResult.Success -> {
-                    _uiState.value = _uiState.value.copy(
-                        pod = result.data,
-                        isLoading = false
-                    )
+                is ApiResult.Success -> _uiState.update {
+                    it.copy(pod = result.data, isLoading = false)
                 }
-                is ApiResult.Error -> {
-                    _uiState.value = _uiState.value.copy(
-                        isLoading = false,
-                        errorMessage = result.message
-                    )
+                is ApiResult.Error -> _uiState.update {
+                    it.copy(isLoading = false, errorMessage = result.message)
                 }
             }
         }
     }
 
     fun startPod() {
-        viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(isActionLoading = true, errorMessage = null)
-            when (val result = repository.startPod(podId)) {
-                is ApiResult.Success -> {
-                    _uiState.value = _uiState.value.copy(
-                        pod = result.data,
-                        isActionLoading = false
-                    )
-                }
-                is ApiResult.Error -> {
-                    _uiState.value = _uiState.value.copy(
-                        isActionLoading = false,
-                        errorMessage = result.message
-                    )
-                }
-            }
-        }
+        executePodAction { repository.startPod(podId) }
     }
 
     fun stopPod() {
-        viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(isActionLoading = true, errorMessage = null)
-            when (val result = repository.stopPod(podId)) {
-                is ApiResult.Success -> {
-                    _uiState.value = _uiState.value.copy(
-                        pod = result.data,
-                        isActionLoading = false
-                    )
-                }
-                is ApiResult.Error -> {
-                    _uiState.value = _uiState.value.copy(
-                        isActionLoading = false,
-                        errorMessage = result.message
-                    )
-                }
-            }
-        }
+        executePodAction { repository.stopPod(podId) }
     }
 
     fun restartPod() {
+        executePodAction { repository.restartPod(podId) }
+    }
+
+    private fun executePodAction(action: suspend () -> ApiResult<Pod>) {
         viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(isActionLoading = true, errorMessage = null)
-            when (val result = repository.restartPod(podId)) {
-                is ApiResult.Success -> {
-                    _uiState.value = _uiState.value.copy(
-                        pod = result.data,
-                        isActionLoading = false
-                    )
+            _uiState.update { it.copy(isActionLoading = true, errorMessage = null) }
+
+            when (val result = action()) {
+                is ApiResult.Success -> _uiState.update {
+                    it.copy(pod = result.data, isActionLoading = false)
                 }
-                is ApiResult.Error -> {
-                    _uiState.value = _uiState.value.copy(
-                        isActionLoading = false,
-                        errorMessage = result.message
-                    )
+                is ApiResult.Error -> _uiState.update {
+                    it.copy(isActionLoading = false, errorMessage = result.message)
                 }
             }
         }
@@ -118,25 +81,20 @@ class PodDetailViewModel @Inject constructor(
 
     fun deletePod() {
         viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(isActionLoading = true, errorMessage = null)
+            _uiState.update { it.copy(isActionLoading = true, errorMessage = null) }
+
             when (repository.deletePod(podId)) {
-                is ApiResult.Success -> {
-                    _uiState.value = _uiState.value.copy(
-                        isActionLoading = false,
-                        isDeleted = true
-                    )
+                is ApiResult.Success -> _uiState.update {
+                    it.copy(isActionLoading = false, isDeleted = true)
                 }
-                is ApiResult.Error -> {
-                    _uiState.value = _uiState.value.copy(
-                        isActionLoading = false,
-                        errorMessage = "Error eliminando pod"
-                    )
+                is ApiResult.Error -> _uiState.update {
+                    it.copy(isActionLoading = false, errorMessage = "Error eliminando pod")
                 }
             }
         }
     }
 
     fun clearError() {
-        _uiState.value = _uiState.value.copy(errorMessage = null)
+        _uiState.update { it.copy(errorMessage = null) }
     }
 }

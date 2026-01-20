@@ -56,14 +56,17 @@ class PodRepository @Inject constructor(
             .mapSuccess { it ?: emptyList() }
 
     /** Helper para llamadas API seguras con manejo de errores unificado */
+    @Suppress("UNCHECKED_CAST")
     private suspend fun <T> safeApiCall(
         errorMessage: String,
         call: suspend () -> Response<T>
     ): ApiResult<T> = withContext(Dispatchers.IO) {
         try {
             val response = call()
-            if (response.isSuccessful && response.body() != null) {
-                ApiResult.Success(response.body()!!)
+            if (response.isSuccessful) {
+                // Para respuestas exitosas, el body puede ser null (ej: DELETE retorna 204 No Content)
+                val body = response.body() ?: Unit as T
+                ApiResult.Success(body)
             } else {
                 ApiResult.Error(
                     message = response.errorBody()?.string() ?: errorMessage,

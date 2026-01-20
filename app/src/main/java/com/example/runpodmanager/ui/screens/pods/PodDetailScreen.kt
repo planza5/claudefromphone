@@ -154,274 +154,196 @@ fun PodDetailScreen(
                         verticalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
                         // Status Card
-                        Card(
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = CardDefaults.cardColors(
-                                containerColor = MaterialTheme.colorScheme.surfaceVariant
-                            )
-                        ) {
-                            Column(
-                                modifier = Modifier.padding(16.dp),
-                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                        DetailCard {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text(
-                                        text = "Estado",
-                                        style = MaterialTheme.typography.titleMedium
-                                    )
-                                    StatusChip(status = pod.desiredStatus ?: "UNKNOWN")
-                                }
+                                Text(
+                                    text = "Estado",
+                                    style = MaterialTheme.typography.titleMedium
+                                )
+                                StatusChip(status = pod.desiredStatus ?: "UNKNOWN")
                             }
                         }
 
                         // Info Card
-                        Card(
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = CardDefaults.cardColors(
-                                containerColor = MaterialTheme.colorScheme.surfaceVariant
+                        DetailCard {
+                            Text(
+                                text = "Informacion",
+                                style = MaterialTheme.typography.titleMedium
                             )
-                        ) {
-                            Column(
-                                modifier = Modifier.padding(16.dp),
-                                verticalArrangement = Arrangement.spacedBy(12.dp)
-                            ) {
-                                Text(
-                                    text = "Informacion",
-                                    style = MaterialTheme.typography.titleMedium
-                                )
-                                InfoRow("ID", pod.id)
-                                InfoRow("Nombre", pod.name)
-                                pod.gpuTypeId?.let { InfoRow("GPU", it) }
-                                pod.machine?.gpuDisplayName?.let { InfoRow("GPU Display", it) }
-                                pod.gpuCount?.let { InfoRow("GPUs", it.toString()) }
-                                pod.imageName?.let { InfoRow("Imagen", it) }
-                                pod.containerDiskInGb?.let { InfoRow("Disco", "${it} GB") }
-                                pod.volumeInGb?.let { InfoRow("Volumen", "${it} GB") }
-                                pod.volumeMountPath?.let { InfoRow("Mount Path", it) }
-                                pod.costPerHr?.let { InfoRow("Costo", "$${String.format("%.3f", it)}/hr") }
-                                pod.machine?.location?.let { InfoRow("Ubicacion", it) }
-                            }
+                            InfoRow("ID", pod.id)
+                            InfoRow("Nombre", pod.name)
+                            pod.gpuTypeId?.let { InfoRow("GPU", it) }
+                            pod.machine?.gpuDisplayName?.let { InfoRow("GPU Display", it) }
+                            pod.gpuCount?.let { InfoRow("GPUs", it.toString()) }
+                            pod.imageName?.let { InfoRow("Imagen", it) }
+                            pod.containerDiskInGb?.let { InfoRow("Disco", "${it} GB") }
+                            pod.volumeInGb?.let { InfoRow("Volumen", "${it} GB") }
+                            pod.volumeMountPath?.let { InfoRow("Mount Path", it) }
+                            pod.costPerHr?.let { InfoRow("Costo", "$${String.format("%.3f", it)}/hr") }
+                            pod.machine?.location?.let { InfoRow("Ubicacion", it) }
                         }
 
-                        // SSH Card - usando portMappings y publicIp
+                        // SSH Card
                         val sshPublicPort = pod.portMappings?.get("22")
                         val sshPublicIp = pod.publicIp
                         if (sshPublicPort != null && sshPublicIp != null) {
                             val sshCommand = "ssh root@$sshPublicIp -p $sshPublicPort"
-                            Card(
-                                modifier = Modifier.fillMaxWidth(),
-                                colors = CardDefaults.cardColors(
-                                    containerColor = MaterialTheme.colorScheme.primaryContainer
-                                )
-                            ) {
-                                Column(
-                                    modifier = Modifier.padding(16.dp),
-                                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                            DetailCard(containerColor = MaterialTheme.colorScheme.primaryContainer) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                    ) {
-                                        Icon(
-                                            Icons.Default.Terminal,
-                                            contentDescription = null,
-                                            tint = MaterialTheme.colorScheme.onPrimaryContainer
-                                        )
-                                        Text(
-                                            text = "Conexion SSH",
-                                            style = MaterialTheme.typography.titleMedium,
-                                            color = MaterialTheme.colorScheme.onPrimaryContainer
-                                        )
-                                    }
-
+                                    Icon(
+                                        Icons.Default.Terminal,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.onPrimaryContainer
+                                    )
                                     Text(
-                                        text = sshCommand,
-                                        style = MaterialTheme.typography.bodyMedium,
+                                        text = "Conexion SSH",
+                                        style = MaterialTheme.typography.titleMedium,
                                         color = MaterialTheme.colorScheme.onPrimaryContainer
                                     )
-
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                    ) {
-                                        OutlinedButton(
-                                            onClick = {
-                                                clipboardManager.setText(AnnotatedString(sshCommand))
-                                                scope.launch {
-                                                    snackbarHostState.showSnackbar("Comando SSH copiado")
-                                                }
-                                            },
-                                            modifier = Modifier.weight(1f)
-                                        ) {
-                                            Icon(Icons.Default.ContentCopy, contentDescription = null)
-                                            Spacer(modifier = Modifier.width(4.dp))
-                                            Text("Copiar")
-                                        }
-
-                                        Button(
-                                            onClick = {
-                                                onNavigateToTerminal(sshPublicIp, sshPublicPort)
-                                            },
-                                            modifier = Modifier.weight(1f)
-                                        ) {
-                                            Icon(Icons.Default.Terminal, contentDescription = null)
-                                            Spacer(modifier = Modifier.width(4.dp))
-                                            Text("Terminal")
-                                        }
-                                    }
                                 }
-                            }
-                        }
 
-                        // Jupyter Lab Card - usando portMappings y publicIp
-                        val jupyterPublicPort = pod.portMappings?.get("8888")
-                        val jupyterPublicIp = pod.publicIp
-                        if (jupyterPublicPort != null && jupyterPublicIp != null) {
-                            val jupyterUrl = "http://$jupyterPublicIp:$jupyterPublicPort"
-                            Card(
-                                modifier = Modifier.fillMaxWidth(),
-                                colors = CardDefaults.cardColors(
-                                    containerColor = MaterialTheme.colorScheme.tertiaryContainer
-                                )
-                            ) {
-                                Column(
-                                    modifier = Modifier.padding(16.dp),
-                                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                                ) {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                    ) {
-                                        Text(
-                                            text = "📓",
-                                            fontSize = 20.sp
-                                        )
-                                        Text(
-                                            text = "Jupyter Lab",
-                                            style = MaterialTheme.typography.titleMedium,
-                                            color = MaterialTheme.colorScheme.onTertiaryContainer
-                                        )
-                                    }
-
-                                    Text(
-                                        text = jupyterUrl,
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = MaterialTheme.colorScheme.onTertiaryContainer
-                                    )
-
-                                    Button(
-                                        onClick = {
-                                            clipboardManager.setText(AnnotatedString(jupyterUrl))
-                                            scope.launch {
-                                                snackbarHostState.showSnackbar("URL de Jupyter copiada")
-                                            }
-                                        },
-                                        modifier = Modifier.fillMaxWidth()
-                                    ) {
-                                        Icon(Icons.Default.ContentCopy, contentDescription = null)
-                                        Spacer(modifier = Modifier.width(8.dp))
-                                        Text("Copiar URL Jupyter")
-                                    }
-                                }
-                            }
-                        }
-
-                        // Ports Card - usando portMappings y publicIp
-                        pod.portMappings?.let { portMappings ->
-                            if (portMappings.isNotEmpty()) {
-                                Card(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    colors = CardDefaults.cardColors(
-                                        containerColor = MaterialTheme.colorScheme.surfaceVariant
-                                    )
-                                ) {
-                                    Column(
-                                        modifier = Modifier.padding(16.dp),
-                                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                                    ) {
-                                        Text(
-                                            text = "Puertos",
-                                            style = MaterialTheme.typography.titleMedium
-                                        )
-                                        val publicIp = pod.publicIp ?: "N/A"
-                                        portMappings.forEach { (privatePort, publicPort) ->
-                                            Text(
-                                                text = "$privatePort -> $publicIp:$publicPort",
-                                                style = MaterialTheme.typography.bodySmall
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-                        }
-
-                        // Actions
-                        Card(
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = CardDefaults.cardColors(
-                                containerColor = MaterialTheme.colorScheme.surfaceVariant
-                            )
-                        ) {
-                            Column(
-                                modifier = Modifier.padding(16.dp),
-                                verticalArrangement = Arrangement.spacedBy(12.dp)
-                            ) {
                                 Text(
-                                    text = "Acciones",
-                                    style = MaterialTheme.typography.titleMedium
+                                    text = sshCommand,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer
                                 )
 
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
-                                    val isRunning = pod.desiredStatus?.uppercase() == "RUNNING"
-
-                                    if (isRunning) {
-                                        OutlinedButton(
-                                            onClick = viewModel::stopPod,
-                                            modifier = Modifier.weight(1f)
-                                        ) {
-                                            Icon(Icons.Default.Stop, contentDescription = null)
-                                            Spacer(modifier = Modifier.height(4.dp))
-                                            Text("Detener")
-                                        }
-                                    } else {
-                                        Button(
-                                            onClick = viewModel::startPod,
-                                            modifier = Modifier.weight(1f)
-                                        ) {
-                                            Icon(Icons.Default.PlayArrow, contentDescription = null)
-                                            Spacer(modifier = Modifier.height(4.dp))
-                                            Text("Iniciar")
-                                        }
-                                    }
-
                                     OutlinedButton(
-                                        onClick = viewModel::restartPod,
+                                        onClick = {
+                                            clipboardManager.setText(AnnotatedString(sshCommand))
+                                            scope.launch { snackbarHostState.showSnackbar("Comando SSH copiado") }
+                                        },
                                         modifier = Modifier.weight(1f)
                                     ) {
-                                        Icon(Icons.Default.Refresh, contentDescription = null)
-                                        Spacer(modifier = Modifier.height(4.dp))
-                                        Text("Reiniciar")
+                                        Icon(Icons.Default.ContentCopy, contentDescription = null)
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text("Copiar")
+                                    }
+
+                                    Button(
+                                        onClick = { onNavigateToTerminal(sshPublicIp, sshPublicPort) },
+                                        modifier = Modifier.weight(1f)
+                                    ) {
+                                        Icon(Icons.Default.Terminal, contentDescription = null)
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text("Terminal")
+                                    }
+                                }
+                            }
+                        }
+
+                        // Jupyter Lab Card
+                        val jupyterPublicPort = pod.portMappings?.get("8888")
+                        if (jupyterPublicPort != null && sshPublicIp != null) {
+                            val jupyterUrl = "http://$sshPublicIp:$jupyterPublicPort"
+                            DetailCard(containerColor = MaterialTheme.colorScheme.tertiaryContainer) {
+                                Text(
+                                    text = "Jupyter Lab",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    color = MaterialTheme.colorScheme.onTertiaryContainer
+                                )
+
+                                Text(
+                                    text = jupyterUrl,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onTertiaryContainer
+                                )
+
+                                Button(
+                                    onClick = {
+                                        clipboardManager.setText(AnnotatedString(jupyterUrl))
+                                        scope.launch { snackbarHostState.showSnackbar("URL de Jupyter copiada") }
+                                    },
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Icon(Icons.Default.ContentCopy, contentDescription = null)
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text("Copiar URL Jupyter")
+                                }
+                            }
+                        }
+
+                        // Ports Card
+                        pod.portMappings?.takeIf { it.isNotEmpty() }?.let { portMappings ->
+                            DetailCard {
+                                Text(
+                                    text = "Puertos",
+                                    style = MaterialTheme.typography.titleMedium
+                                )
+                                val publicIp = pod.publicIp ?: "N/A"
+                                portMappings.forEach { (privatePort, publicPort) ->
+                                    Text(
+                                        text = "$privatePort -> $publicIp:$publicPort",
+                                        style = MaterialTheme.typography.bodySmall
+                                    )
+                                }
+                            }
+                        }
+
+                        // Actions Card
+                        DetailCard {
+                            Text(
+                                text = "Acciones",
+                                style = MaterialTheme.typography.titleMedium
+                            )
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                val isRunning = pod.desiredStatus?.uppercase() == "RUNNING"
+
+                                if (isRunning) {
+                                    OutlinedButton(
+                                        onClick = viewModel::stopPod,
+                                        modifier = Modifier.weight(1f)
+                                    ) {
+                                        Icon(Icons.Default.Stop, contentDescription = null)
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text("Detener")
+                                    }
+                                } else {
+                                    Button(
+                                        onClick = viewModel::startPod,
+                                        modifier = Modifier.weight(1f)
+                                    ) {
+                                        Icon(Icons.Default.PlayArrow, contentDescription = null)
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text("Iniciar")
                                     }
                                 }
 
-                                Button(
-                                    onClick = { showDeleteDialog = true },
-                                    modifier = Modifier.fillMaxWidth(),
-                                    colors = ButtonDefaults.buttonColors(
-                                        containerColor = MaterialTheme.colorScheme.error
-                                    )
+                                OutlinedButton(
+                                    onClick = viewModel::restartPod,
+                                    modifier = Modifier.weight(1f)
                                 ) {
-                                    Icon(Icons.Default.Delete, contentDescription = null)
-                                    Spacer(modifier = Modifier.height(4.dp))
-                                    Text("Eliminar Pod")
+                                    Icon(Icons.Default.Refresh, contentDescription = null)
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("Reiniciar")
                                 }
+                            }
+
+                            Button(
+                                onClick = { showDeleteDialog = true },
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = MaterialTheme.colorScheme.error
+                                )
+                            ) {
+                                Icon(Icons.Default.Delete, contentDescription = null)
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Eliminar Pod")
                             }
                         }
                     }
@@ -456,5 +378,24 @@ private fun InfoRow(label: String, value: String) {
             modifier = Modifier.weight(1f, fill = false),
             maxLines = 2
         )
+    }
+}
+
+@Composable
+private fun DetailCard(
+    modifier: Modifier = Modifier,
+    containerColor: androidx.compose.ui.graphics.Color = MaterialTheme.colorScheme.surfaceVariant,
+    content: @Composable () -> Unit
+) {
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = containerColor)
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            content()
+        }
     }
 }

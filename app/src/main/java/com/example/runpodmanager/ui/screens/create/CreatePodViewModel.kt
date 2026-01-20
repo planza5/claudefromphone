@@ -14,6 +14,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -55,123 +56,107 @@ class CreatePodViewModel @Inject constructor(
     }
 
     private fun loadSshKeys() {
-        val hasKeys = sshKeyManager.hasKeys()
-        val publicKey = sshKeyManager.getPublicKey()
-
-        _uiState.value = _uiState.value.copy(
-            hasSshKeys = hasKeys,
-            sshPublicKey = publicKey
-        )
+        _uiState.update {
+            it.copy(hasSshKeys = sshKeyManager.hasKeys(), sshPublicKey = sshKeyManager.getPublicKey())
+        }
     }
 
     private fun loadNetworkVolumes() {
         viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(isLoadingVolumes = true)
+            _uiState.update { it.copy(isLoadingVolumes = true) }
+
             when (val result = repository.getNetworkVolumes()) {
                 is ApiResult.Success -> {
                     val volumes = result.data
-                    // Seleccionar "Pablo2" por defecto si existe
                     val defaultVolume = volumes.find { it.name.equals("Pablo2", ignoreCase = true) }
                         ?: volumes.firstOrNull()
 
-                    _uiState.value = _uiState.value.copy(
-                        networkVolumes = volumes,
-                        selectedNetworkVolume = defaultVolume,
-                        isLoadingVolumes = false
-                    )
+                    _uiState.update {
+                        it.copy(
+                            networkVolumes = volumes,
+                            selectedNetworkVolume = defaultVolume,
+                            isLoadingVolumes = false
+                        )
+                    }
                 }
-                is ApiResult.Error -> {
-                    _uiState.value = _uiState.value.copy(
-                        isLoadingVolumes = false
-                    )
-                }
+                is ApiResult.Error -> _uiState.update { it.copy(isLoadingVolumes = false) }
             }
         }
     }
 
     fun onNameChange(name: String) {
-        _uiState.value = _uiState.value.copy(name = name)
+        _uiState.update { it.copy(name = name) }
     }
 
     fun onComputeTypeChange(type: ComputeType) {
-        _uiState.value = _uiState.value.copy(computeType = type)
+        _uiState.update { it.copy(computeType = type) }
     }
 
     fun onGpuChange(gpu: GpuOption) {
-        _uiState.value = _uiState.value.copy(selectedGpu = gpu)
+        _uiState.update { it.copy(selectedGpu = gpu) }
     }
 
     fun onCpuChange(cpu: CpuOption) {
-        _uiState.value = _uiState.value.copy(selectedCpu = cpu)
+        _uiState.update { it.copy(selectedCpu = cpu) }
     }
 
     fun onContainerDiskChange(size: Int) {
-        _uiState.value = _uiState.value.copy(containerDiskGb = size)
+        _uiState.update { it.copy(containerDiskGb = size) }
     }
 
     fun onNetworkVolumeChange(volume: NetworkVolume) {
-        _uiState.value = _uiState.value.copy(selectedNetworkVolume = volume)
+        _uiState.update { it.copy(selectedNetworkVolume = volume) }
     }
 
     fun createPod() {
         val state = _uiState.value
 
         if (state.name.isBlank()) {
-            _uiState.value = state.copy(errorMessage = "El nombre es requerido")
+            _uiState.update { it.copy(errorMessage = "El nombre es requerido") }
             return
         }
 
         if (!state.hasSshKeys) {
-            _uiState.value = state.copy(errorMessage = "Debes generar claves SSH en Configuracion antes de crear un pod")
+            _uiState.update { it.copy(errorMessage = "Debes generar claves SSH en Configuracion antes de crear un pod") }
             return
         }
 
         viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(isLoading = true, errorMessage = null)
+            _uiState.update { it.copy(isLoading = true, errorMessage = null) }
 
-            val networkVolumeId = state.selectedNetworkVolume?.id
-
-            // Configurar clave SSH y luego ejecutar el entrypoint original de Runpod
-            val sshSetup = state.sshPublicKey?.let { key ->
-                "mkdir -p ~/.ssh && echo '${key.trim()}' >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys"
-            } ?: ""
-
-            // Combinar setup SSH + setup_env + tailscale + entrypoint original
-            val fullScript = buildString {
-                if (sshSetup.isNotBlank()) append("$sshSetup && ")
-                append("source /workspace/setup_env.sh && /workspace/start_tailscale.sh && exec /start.sh")
-            }
-
-            val isGpu = state.computeType == ComputeType.GPU
-            val request = CreatePodRequest(
-                name = state.name,
-                gpuTypeIds = if (isGpu) listOf(state.selectedGpu.id) else emptyList(),
-                computeType = if (isGpu) "GPU" else "CPU",
-                cpuFlavorIds = if (!isGpu) listOf(state.selectedCpu.id) else null,
-                containerDiskInGb = state.containerDiskGb,
-                volumeInGb = 0,
-                networkVolumeId = networkVolumeId,
-                dockerStartCmd = listOf("bash", "-c", fullScript)
-            )
+            val request = buildCreatePodRequest(state)
 
             when (val result = repository.createPod(request)) {
-                is ApiResult.Success -> {
-                    _uiState.value = _uiState.value.copy(
-                        isLoading = false,
-                        isCreated = true
-                    )
-                }
-                is ApiResult.Error -> {
-                    _uiState.value = _uiState.value.copy(
-                        isLoading = false,
-                        errorMessage = result.message
-                    )
-                }
+                is ApiResult.Success -> _uiState.update { it.copy(isLoading = false, isCreated = true) }
+                is ApiResult.Error -> _uiState.update { it.copy(isLoading = false, errorMessage = result.message) }
             }
         }
     }
 
+    private fun buildCreatePodRequest(state: CreatePodUiState): CreatePodRequest {
+        val sshSetup = state.sshPublicKey?.let { key ->
+            "mkdir -p ~/.ssh && echo '${key.trim()}' >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys"
+        } ?: ""
+
+        val fullScript = buildString {
+            if (sshSetup.isNotBlank()) append("$sshSetup && ")
+            append("source /workspace/setup_env.sh && /workspace/start_tailscale.sh && exec /start.sh")
+        }
+
+        val isGpu = state.computeType == ComputeType.GPU
+        return CreatePodRequest(
+            name = state.name,
+            gpuTypeIds = if (isGpu) listOf(state.selectedGpu.id) else emptyList(),
+            computeType = if (isGpu) "GPU" else "CPU",
+            cpuFlavorIds = if (!isGpu) listOf(state.selectedCpu.id) else null,
+            containerDiskInGb = state.containerDiskGb,
+            volumeInGb = 0,
+            networkVolumeId = state.selectedNetworkVolume?.id,
+            dockerStartCmd = listOf("bash", "-c", fullScript)
+        )
+    }
+
     fun clearError() {
-        _uiState.value = _uiState.value.copy(errorMessage = null)
+        _uiState.update { it.copy(errorMessage = null) }
     }
 }
