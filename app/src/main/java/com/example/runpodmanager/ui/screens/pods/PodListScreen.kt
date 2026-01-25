@@ -12,6 +12,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
@@ -22,13 +23,16 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -47,6 +51,7 @@ fun PodListScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
+    var podToDelete by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(shouldRefresh) {
         if (shouldRefresh) {
@@ -60,6 +65,30 @@ fun PodListScreen(
             snackbarHostState.showSnackbar(it)
             viewModel.clearError()
         }
+    }
+
+    // Diálogo de confirmación para eliminar
+    if (podToDelete != null) {
+        AlertDialog(
+            onDismissRequest = { podToDelete = null },
+            title = { Text("Eliminar Pod") },
+            text = { Text("¿Estás seguro de que quieres eliminar este pod? Esta acción no se puede deshacer.") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        podToDelete?.let { viewModel.deletePod(it) }
+                        podToDelete = null
+                    }
+                ) {
+                    Text("Eliminar", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { podToDelete = null }) {
+                    Text("Cancelar")
+                }
+            }
+        )
     }
 
     Scaffold(
@@ -134,15 +163,18 @@ fun PodListScreen(
                         ) { pod ->
                             PodCard(
                                 pod = pod,
-                                onClick = { onNavigateToDetail(pod.id) }
+                                onClick = { onNavigateToDetail(pod.id) },
+                                onStartPod = { viewModel.startPod(pod.id) },
+                                onStopPod = { viewModel.stopPod(pod.id) },
+                                onDeletePod = { podToDelete = pod.id }
                             )
                         }
                     }
                 }
             }
 
-            // Show loading indicator when refreshing
-            if (uiState.isRefreshing) {
+            // Show loading indicator when refreshing or performing action
+            if (uiState.isRefreshing || uiState.isLoading && uiState.pods.isNotEmpty()) {
                 CircularProgressIndicator(
                     modifier = Modifier
                         .align(Alignment.TopCenter)

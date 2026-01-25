@@ -27,7 +27,9 @@ data class TerminalUiState(
     val isConnecting: Boolean = false,
     val currentInput: String = "",
     val errorMessage: String? = null,
-    val terminalReady: Boolean = false
+    val terminalReady: Boolean = false,
+    val projects: List<String> = emptyList(),
+    val isLoadingProjects: Boolean = false
 )
 
 @HiltViewModel
@@ -105,6 +107,20 @@ class TerminalViewModel @Inject constructor(
         controller.setSession(newSession)
         bridge.startOutputCollection()
         _uiState.update { it.copy(terminalReady = true) }
+        loadProjects()
+    }
+
+    private fun loadProjects() {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoadingProjects = true) }
+            val command = """find /workspace -type f \( -name "settings.gradle" -o -name "settings.gradle.kts" \) 2>/dev/null | while read f; do dirname "${'$'}f"; done | sort -u"""
+            sshManager.executeCommand(command).onSuccess { output ->
+                val projects = output.lines().filter { it.isNotBlank() }
+                _uiState.update { it.copy(projects = projects, isLoadingProjects = false) }
+            }.onFailure {
+                _uiState.update { it.copy(isLoadingProjects = false) }
+            }
+        }
     }
 
     fun connect() {

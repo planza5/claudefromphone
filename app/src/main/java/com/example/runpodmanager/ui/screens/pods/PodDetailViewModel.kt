@@ -60,10 +60,6 @@ class PodDetailViewModel @Inject constructor(
         executePodAction { repository.stopPod(podId) }
     }
 
-    fun restartPod() {
-        executePodAction { repository.restartPod(podId) }
-    }
-
     private fun executePodAction(action: suspend () -> ApiResult<Pod>) {
         viewModelScope.launch {
             _uiState.update { it.copy(isActionLoading = true, errorMessage = null) }

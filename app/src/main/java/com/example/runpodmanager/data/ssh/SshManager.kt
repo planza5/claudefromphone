@@ -233,6 +233,25 @@ class SshManager @Inject constructor(
     fun isConnected(): Boolean = sshClient?.isConnected == true && shell?.isOpen == true
 
     /**
+     * Ejecuta un comando y devuelve el resultado como String.
+     * Usa una sesión separada para no interferir con el shell interactivo.
+     */
+    suspend fun executeCommand(command: String): Result<String> = withContext(Dispatchers.IO) {
+        try {
+            val client = sshClient ?: return@withContext Result.failure(Exception("No conectado"))
+            val execSession = client.startSession()
+            val cmd = execSession.exec(command)
+            val output = cmd.inputStream.bufferedReader().readText()
+            cmd.join()
+            execSession.close()
+            Result.success(output.trim())
+        } catch (e: Exception) {
+            Log.e(TAG, "Error ejecutando comando: ${e.message}", e)
+            Result.failure(e)
+        }
+    }
+
+    /**
      * Redimensionar el PTY cuando el terminal cambia de tamaño.
      * Esto es importante para que las aplicaciones como vim, htop, etc.
      * se rendericen correctamente.

@@ -7,7 +7,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
@@ -15,14 +14,9 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ContentCopy
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Terminal
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -35,23 +29,19 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import kotlinx.coroutines.launch
 import com.example.runpodmanager.ui.components.LoadingOverlay
@@ -67,7 +57,6 @@ fun PodDetailScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
-    var showDeleteDialog by remember { mutableStateOf(false) }
     val clipboardManager = LocalClipboardManager.current
     val scope = rememberCoroutineScope()
 
@@ -82,29 +71,6 @@ fun PodDetailScreen(
         if (uiState.isDeleted) {
             onPodDeleted()
         }
-    }
-
-    if (showDeleteDialog) {
-        AlertDialog(
-            onDismissRequest = { showDeleteDialog = false },
-            title = { Text("Eliminar Pod") },
-            text = { Text("Estas seguro de que quieres eliminar este pod? Esta accion no se puede deshacer.") },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        showDeleteDialog = false
-                        viewModel.deletePod()
-                    }
-                ) {
-                    Text("Eliminar", color = MaterialTheme.colorScheme.error)
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showDeleteDialog = false }) {
-                    Text("Cancelar")
-                }
-            }
-        )
     }
 
     Scaffold(
@@ -166,25 +132,6 @@ fun PodDetailScreen(
                                 )
                                 StatusChip(status = pod.desiredStatus ?: "UNKNOWN")
                             }
-                        }
-
-                        // Info Card
-                        DetailCard {
-                            Text(
-                                text = "Informacion",
-                                style = MaterialTheme.typography.titleMedium
-                            )
-                            InfoRow("ID", pod.id)
-                            InfoRow("Nombre", pod.name)
-                            pod.gpuTypeId?.let { InfoRow("GPU", it) }
-                            pod.machine?.gpuDisplayName?.let { InfoRow("GPU Display", it) }
-                            pod.gpuCount?.let { InfoRow("GPUs", it.toString()) }
-                            pod.imageName?.let { InfoRow("Imagen", it) }
-                            pod.containerDiskInGb?.let { InfoRow("Disco", "${it} GB") }
-                            pod.volumeInGb?.let { InfoRow("Volumen", "${it} GB") }
-                            pod.volumeMountPath?.let { InfoRow("Mount Path", it) }
-                            pod.costPerHr?.let { InfoRow("Costo", "$${String.format("%.3f", it)}/hr") }
-                            pod.machine?.location?.let { InfoRow("Ubicacion", it) }
                         }
 
                         // SSH Card
@@ -273,79 +220,6 @@ fun PodDetailScreen(
                                 }
                             }
                         }
-
-                        // Ports Card
-                        pod.portMappings?.takeIf { it.isNotEmpty() }?.let { portMappings ->
-                            DetailCard {
-                                Text(
-                                    text = "Puertos",
-                                    style = MaterialTheme.typography.titleMedium
-                                )
-                                val publicIp = pod.publicIp ?: "N/A"
-                                portMappings.forEach { (privatePort, publicPort) ->
-                                    Text(
-                                        text = "$privatePort -> $publicIp:$publicPort",
-                                        style = MaterialTheme.typography.bodySmall
-                                    )
-                                }
-                            }
-                        }
-
-                        // Actions Card
-                        DetailCard {
-                            Text(
-                                text = "Acciones",
-                                style = MaterialTheme.typography.titleMedium
-                            )
-
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                val isRunning = pod.desiredStatus?.uppercase() == "RUNNING"
-
-                                if (isRunning) {
-                                    OutlinedButton(
-                                        onClick = viewModel::stopPod,
-                                        modifier = Modifier.weight(1f)
-                                    ) {
-                                        Icon(Icons.Default.Stop, contentDescription = null)
-                                        Spacer(modifier = Modifier.width(4.dp))
-                                        Text("Detener")
-                                    }
-                                } else {
-                                    Button(
-                                        onClick = viewModel::startPod,
-                                        modifier = Modifier.weight(1f)
-                                    ) {
-                                        Icon(Icons.Default.PlayArrow, contentDescription = null)
-                                        Spacer(modifier = Modifier.width(4.dp))
-                                        Text("Iniciar")
-                                    }
-                                }
-
-                                OutlinedButton(
-                                    onClick = viewModel::restartPod,
-                                    modifier = Modifier.weight(1f)
-                                ) {
-                                    Icon(Icons.Default.Refresh, contentDescription = null)
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Text("Reiniciar")
-                                }
-                            }
-
-                            Button(
-                                onClick = { showDeleteDialog = true },
-                                modifier = Modifier.fillMaxWidth(),
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = MaterialTheme.colorScheme.error
-                                )
-                            ) {
-                                Icon(Icons.Default.Delete, contentDescription = null)
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text("Eliminar Pod")
-                            }
-                        }
                     }
                 }
                 else -> {
@@ -358,26 +232,6 @@ fun PodDetailScreen(
                 }
             }
         }
-    }
-}
-
-@Composable
-private fun InfoRow(label: String, value: String) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween
-    ) {
-        Text(
-            text = label,
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-        Text(
-            text = value,
-            style = MaterialTheme.typography.bodyMedium,
-            modifier = Modifier.weight(1f, fill = false),
-            maxLines = 2
-        )
     }
 }
 

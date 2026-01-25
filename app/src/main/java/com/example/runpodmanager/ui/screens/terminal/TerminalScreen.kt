@@ -1,8 +1,12 @@
 package com.example.runpodmanager.ui.screens.terminal
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
-import android.util.Log
+import android.os.Bundle
+import android.speech.RecognitionListener
+import android.speech.RecognizerIntent
+import android.speech.SpeechRecognizer
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -20,6 +24,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Surface
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -44,7 +49,6 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -54,53 +58,54 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
-import com.example.runpodmanager.data.whisper.WhisperManager
-import com.example.runpodmanager.data.whisper.WhisperManagerListener
-import com.example.runpodmanager.data.whisper.WhisperState
 import com.termux.view.TerminalView
 import kotlinx.coroutines.launch
+
+enum class SpeechState { Idle, Listening, Processing }
+
+private data class ExtraKeyData(val label: String, val bytes: ByteArray)
+
+private val extraKeys = listOf(
+    ExtraKeyData("↵", byteArrayOf(0x0D)),
+    ExtraKeyData("TAB", byteArrayOf(0x09)),
+    ExtraKeyData("↑", byteArrayOf(0x1B, 0x5B, 0x41)),
+    ExtraKeyData("↓", byteArrayOf(0x1B, 0x5B, 0x42)),
+    ExtraKeyData("←", byteArrayOf(0x1B, 0x5B, 0x44)),
+    ExtraKeyData("→", byteArrayOf(0x1B, 0x5B, 0x43)),
+    ExtraKeyData("C-c", byteArrayOf(0x03)),
+    ExtraKeyData("~", "~".toByteArray()),
+    ExtraKeyData("ESC", byteArrayOf(0x1B))
+)
 
 @Composable
 fun ExtraKeysBar(
     onKey: (ByteArray) -> Unit,
     onRequestFocus: () -> Unit,
     onMicClick: () -> Unit,
-    whisperState: WhisperState = WhisperState.Idle
+    speechState: SpeechState = SpeechState.Idle
 ) {
     val keyColor = Color(0xFF2D2D2D)
     val textColor = Color(0xFF4EC9B0)
-    val micActiveColor = Color(0xFFE53935)
-    val micProcessingColor = Color(0xFFFF9800)
-    val micLoadingColor = Color(0xFF9E9E9E)
 
     val sendKey: (ByteArray) -> Unit = { bytes ->
         onKey(bytes)
         onRequestFocus()
     }
 
-    val micColor = when (whisperState) {
-        is WhisperState.Listening -> micActiveColor
-        is WhisperState.Processing -> micProcessingColor
-        is WhisperState.Loading -> micLoadingColor
-        else -> keyColor
+    val (micColor, micTint) = when (speechState) {
+        SpeechState.Listening -> Color(0xFFE53935) to Color.White
+        SpeechState.Processing -> Color(0xFFFF9800) to Color.White
+        else -> keyColor to textColor
     }
 
-    val micTint = when (whisperState) {
-        is WhisperState.Listening, is WhisperState.Processing -> Color.White
-        else -> textColor
-    }
-
-    Surface(
-        color = Color(0xFF1A1A1A),
-        modifier = Modifier.fillMaxWidth()
-    ) {
+    Surface(color = Color(0xFF1A1A1A), modifier = Modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier
                 .horizontalScroll(rememberScrollState())
@@ -108,7 +113,6 @@ fun ExtraKeysBar(
             horizontalArrangement = Arrangement.spacedBy(4.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Botón de micrófono con Whisper
             Surface(
                 onClick = onMicClick,
                 color = micColor,
@@ -119,55 +123,25 @@ fun ExtraKeysBar(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.Mic,
-                        contentDescription = "Voz (Whisper)",
-                        tint = micTint,
-                        modifier = Modifier.size(20.dp)
-                    )
-                    if (whisperState is WhisperState.Processing) {
-                        Spacer(modifier = Modifier.size(4.dp))
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(12.dp),
-                            color = Color.White,
-                            strokeWidth = 2.dp
-                        )
+                    Icon(Icons.Default.Mic, "Voz", tint = micTint, modifier = Modifier.size(20.dp))
+                    if (speechState == SpeechState.Processing) {
+                        Spacer(Modifier.size(4.dp))
+                        CircularProgressIndicator(Modifier.size(12.dp), Color.White, strokeWidth = 2.dp)
                     }
                 }
             }
 
-            ExtraKey("↵", keyColor, textColor) { sendKey(byteArrayOf(0x0D)) } // Enter
-            ExtraKey("TAB", keyColor, textColor) { sendKey(byteArrayOf(0x09)) }
-            ExtraKey("\u2191", keyColor, textColor) { sendKey(byteArrayOf(0x1B, 0x5B, 0x41)) }
-            ExtraKey("\u2193", keyColor, textColor) { sendKey(byteArrayOf(0x1B, 0x5B, 0x42)) }
-            ExtraKey("\u2190", keyColor, textColor) { sendKey(byteArrayOf(0x1B, 0x5B, 0x44)) }
-            ExtraKey("\u2192", keyColor, textColor) { sendKey(byteArrayOf(0x1B, 0x5B, 0x43)) }
-            ExtraKey("C-c", keyColor, textColor) { sendKey(byteArrayOf(0x03)) }
-            ExtraKey("~", keyColor, textColor) { sendKey("~".toByteArray()) }
-            ExtraKey("ESC", keyColor, textColor) { sendKey(byteArrayOf(0x1B)) }
+            extraKeys.forEach { key ->
+                Surface(
+                    onClick = { sendKey(key.bytes) },
+                    color = keyColor,
+                    shape = RoundedCornerShape(4.dp),
+                    modifier = Modifier.padding(2.dp)
+                ) {
+                    Text(key.label, color = textColor, modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp))
+                }
+            }
         }
-    }
-}
-
-@Composable
-fun ExtraKey(
-    label: String,
-    backgroundColor: Color,
-    textColor: Color,
-    onClick: () -> Unit
-) {
-    Surface(
-        onClick = onClick,
-        color = backgroundColor,
-        shape = RoundedCornerShape(4.dp),
-        modifier = Modifier.padding(2.dp)
-    ) {
-        Text(
-            text = label,
-            color = textColor,
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-            style = MaterialTheme.typography.bodyMedium
-        )
     }
 }
 
@@ -183,46 +157,63 @@ fun TerminalScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
-    // Whisper state
-    var whisperState by remember { mutableStateOf<WhisperState>(WhisperState.Idle) }
-    var amplitude by remember { mutableFloatStateOf(0f) }
+    // Speech Recognition state
+    var speechState by remember { mutableStateOf(SpeechState.Idle) }
 
-    // Initialize WhisperManager
-    val whisperManager = remember {
-        WhisperManager(context).apply {
-            setListener(object : WhisperManagerListener {
-                override fun onStateChanged(state: WhisperState) {
-                    whisperState = state
-                    Log.d("Whisper", "State: $state")
-                }
-
-                override fun onTranscriptionResult(text: String) {
-                    Log.d("Whisper", "Resultado: $text")
-                    if (text.isNotBlank()) {
-                        viewModel.sendVoiceCommand(text)
-                    }
-                }
-
-                override fun onError(message: String) {
-                    scope.launch { snackbarHostState.showSnackbar(message) }
-                }
-
-                override fun onAmplitudeUpdate(amp: Float) {
-                    amplitude = amp
-                }
-            })
+    // Speech Recognizer
+    val speechRecognizer = remember {
+        if (SpeechRecognizer.isRecognitionAvailable(context)) {
+            SpeechRecognizer.createSpeechRecognizer(context)
+        } else {
+            null
         }
     }
 
-    // Initialize Whisper model on first composition
-    LaunchedEffect(Unit) {
-        whisperManager.initialize()
-    }
+    // Setup speech recognizer listener
+    DisposableEffect(speechRecognizer) {
+        speechRecognizer?.setRecognitionListener(object : RecognitionListener {
+            override fun onReadyForSpeech(params: Bundle?) {
+                speechState = SpeechState.Listening
+            }
 
-    // Cleanup on dispose
-    DisposableEffect(Unit) {
+            override fun onBeginningOfSpeech() {}
+
+            override fun onRmsChanged(rmsdB: Float) {}
+
+            override fun onBufferReceived(buffer: ByteArray?) {}
+
+            override fun onEndOfSpeech() {
+                speechState = SpeechState.Processing
+            }
+
+            override fun onError(error: Int) {
+                speechState = SpeechState.Idle
+                val errorMessage = when (error) {
+                    SpeechRecognizer.ERROR_NO_MATCH -> "No se reconoció ninguna voz"
+                    SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "Tiempo de espera agotado"
+                    SpeechRecognizer.ERROR_NETWORK -> "Error de red"
+                    SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> "Timeout de red"
+                    else -> "Error de reconocimiento de voz"
+                }
+                scope.launch { snackbarHostState.showSnackbar(errorMessage) }
+            }
+
+            override fun onResults(results: Bundle?) {
+                speechState = SpeechState.Idle
+                val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                val text = matches?.firstOrNull()
+                if (!text.isNullOrBlank()) {
+                    viewModel.sendVoiceCommand(text)
+                }
+            }
+
+            override fun onPartialResults(partialResults: Bundle?) {}
+
+            override fun onEvent(eventType: Int, params: Bundle?) {}
+        })
+
         onDispose {
-            whisperManager.release()
+            speechRecognizer?.destroy()
         }
     }
 
@@ -230,13 +221,18 @@ fun TerminalScreen(
         ActivityResultContracts.RequestPermission()
     ) { isGranted ->
         if (isGranted) {
-            whisperManager.startListening()
+            startSpeechRecognition(speechRecognizer)
         } else {
-            scope.launch { snackbarHostState.showSnackbar("Se necesita permiso de microfono para usar voz") }
+            scope.launch { snackbarHostState.showSnackbar("Se necesita permiso de micrófono para usar voz") }
         }
     }
 
     fun startVoiceRecognition() {
+        if (speechRecognizer == null) {
+            scope.launch { snackbarHostState.showSnackbar("Reconocimiento de voz no disponible") }
+            return
+        }
+
         val hasPermission = ContextCompat.checkSelfPermission(
             context, Manifest.permission.RECORD_AUDIO
         ) == PackageManager.PERMISSION_GRANTED
@@ -246,10 +242,11 @@ fun TerminalScreen(
             return
         }
 
-        if (whisperManager.isListening()) {
-            whisperManager.stopListening()
+        if (speechState == SpeechState.Listening) {
+            speechRecognizer.stopListening()
+            speechState = SpeechState.Idle
         } else {
-            whisperManager.startListening()
+            startSpeechRecognition(speechRecognizer)
         }
     }
 
@@ -411,7 +408,14 @@ fun TerminalScreen(
                             onKey = { sequence -> viewModel.sendEscapeSequence(sequence) },
                             onRequestFocus = { controller.showKeyboard() },
                             onMicClick = { startVoiceRecognition() },
-                            whisperState = whisperState
+                            speechState = speechState
+                        )
+                        ProjectsBar(
+                            projects = uiState.projects,
+                            isLoading = uiState.isLoadingProjects,
+                            onProjectClick = { project ->
+                                // Por ahora solo imprime el proyecto seleccionado
+                            }
                         )
                     }
                 }
@@ -427,6 +431,64 @@ fun TerminalScreen(
                         Text(
                             text = "Inicializando terminal...",
                             color = Color(0xFF4EC9B0)
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+private fun startSpeechRecognition(speechRecognizer: SpeechRecognizer?) {
+    val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+        putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+        putExtra(RecognizerIntent.EXTRA_LANGUAGE, "es-ES")
+        putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
+        putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, false)
+    }
+    speechRecognizer?.startListening(intent)
+}
+
+@Composable
+fun ProjectsBar(
+    projects: List<String>,
+    isLoading: Boolean,
+    onProjectClick: (String) -> Unit
+) {
+    if (projects.isEmpty() && !isLoading) return
+
+    val keyColor = Color(0xFF2D2D2D)
+    val textColor = Color(0xFF9CDCFE)
+
+    Surface(color = Color(0xFF1A1A1A), modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 4.dp, vertical = 4.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            if (isLoading) {
+                Row(
+                    modifier = Modifier.padding(8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    CircularProgressIndicator(Modifier.size(16.dp), Color(0xFF4EC9B0), strokeWidth = 2.dp)
+                    Text("Buscando proyectos...", color = Color.Gray)
+                }
+            } else {
+                projects.forEach { project ->
+                    val projectName = project.substringAfterLast("/")
+                    Surface(
+                        onClick = { onProjectClick(project) },
+                        color = keyColor,
+                        shape = RoundedCornerShape(4.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            projectName,
+                            color = textColor,
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)
                         )
                     }
                 }

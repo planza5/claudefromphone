@@ -26,7 +26,10 @@
       "WebFetch(domain:deepwiki.com)",
       "Bash(curl:*)",
       "Bash(adb logcat:*)",
-      "Bash(xxd:*)"
+      "Bash(xxd:*)",
+      "Bash(./gradlew compileDebugKotlin:*)",
+      "Bash(chmod:*)",
+      "Bash(bash find_android_projects.sh:*)"
     ]
   }
 }

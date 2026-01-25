@@ -134,16 +134,13 @@ class CreatePodViewModel @Inject constructor(
     }
 
     private fun buildCreatePodRequest(state: CreatePodUiState): CreatePodRequest {
-        val sshSetup = state.sshPublicKey?.let { key ->
-            "mkdir -p ~/.ssh && echo '${key.trim()}' >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys"
+        val sshSetup = state.sshPublicKey?.let {
+            "mkdir -p ~/.ssh && echo '${it.trim()}' >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys && "
         } ?: ""
 
-        val fullScript = buildString {
-            if (sshSetup.isNotBlank()) append("$sshSetup && ")
-            append("source /workspace/setup_env.sh && /workspace/start_tailscale.sh && exec /start.sh")
-        }
-
+        val script = "cd /workspace && ${sshSetup}source /workspace/setup_env.sh && /workspace/start_tailscale.sh && exec /start.sh"
         val isGpu = state.computeType == ComputeType.GPU
+
         return CreatePodRequest(
             name = state.name,
             gpuTypeIds = if (isGpu) listOf(state.selectedGpu.id) else emptyList(),
@@ -152,7 +149,7 @@ class CreatePodViewModel @Inject constructor(
             containerDiskInGb = state.containerDiskGb,
             volumeInGb = 0,
             networkVolumeId = state.selectedNetworkVolume?.id,
-            dockerStartCmd = listOf("bash", "-c", fullScript)
+            dockerStartCmd = listOf("bash", "-c", script)
         )
     }
 

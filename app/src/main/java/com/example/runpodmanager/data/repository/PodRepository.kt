@@ -44,9 +44,6 @@ class PodRepository @Inject constructor(
     suspend fun stopPod(podId: String): ApiResult<Pod> =
         safeApiCall("Error stopping pod") { api.stopPod(podId) }
 
-    suspend fun restartPod(podId: String): ApiResult<Pod> =
-        safeApiCall("Error restarting pod") { api.restartPod(podId) }
-
     suspend fun getNetworkVolumes(): ApiResult<List<NetworkVolume>> =
         safeApiCall("Error fetching network volumes") { api.getNetworkVolumes() }
             .mapSuccess { it ?: emptyList() }

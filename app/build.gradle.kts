@@ -52,11 +52,6 @@ android {
         }
     }
 
-    // No comprimir archivos tflite para que TensorFlow Lite pueda acceder directamente
-    androidResources {
-        noCompress += "tflite"
-        noCompress += "bin"
-    }
 }
 
 dependencies {
@@ -105,10 +100,6 @@ dependencies {
     implementation("org.bouncycastle:bcprov-jdk18on:1.77")
     implementation("org.bouncycastle:bcpkix-jdk18on:1.77")
     implementation("net.i2p.crypto:eddsa:0.3.0")
-
-    // TensorFlow Lite for Whisper
-    implementation("org.tensorflow:tensorflow-lite:2.14.0")
-    implementation("org.tensorflow:tensorflow-lite-support:0.4.4")
 
     // Testing
     testImplementation("junit:junit:4.13.2")

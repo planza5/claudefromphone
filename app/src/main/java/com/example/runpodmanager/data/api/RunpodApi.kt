@@ -43,9 +43,6 @@ interface RunpodApi {
     @POST("pods/{podId}/stop")
     suspend fun stopPod(@Path("podId") podId: String): Response<Pod>
 
-    @POST("pods/{podId}/restart")
-    suspend fun restartPod(@Path("podId") podId: String): Response<Pod>
-
     @GET("networkvolumes")
     suspend fun getNetworkVolumes(): Response<List<NetworkVolume>>
 

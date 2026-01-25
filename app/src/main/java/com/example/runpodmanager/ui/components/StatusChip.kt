@@ -18,13 +18,17 @@ private val StatusBlue = Color(0xFF2196F3)
 private val StatusRed = Color(0xFFF44336)
 
 @Composable
-fun StatusChip(
-    status: String,
-    modifier: Modifier = Modifier
-) {
+fun StatusChip(status: String, modifier: Modifier = Modifier) {
     val normalizedStatus = status.uppercase()
-    val backgroundColor = getStatusBackgroundColor(normalizedStatus)
-    val textColor = getStatusTextColor(normalizedStatus)
+    val (displayStatus, backgroundColor) = when (normalizedStatus) {
+        "RUNNING" -> normalizedStatus to StatusGreen
+        "EXITED", "STOPPED" -> "PAUSED" to StatusOrange
+        "CREATED", "PENDING" -> normalizedStatus to StatusBlue
+        "TERMINATED", "FAILED" -> normalizedStatus to StatusRed
+        else -> normalizedStatus to MaterialTheme.colorScheme.surfaceVariant
+    }
+    val textColor = if (backgroundColor != MaterialTheme.colorScheme.surfaceVariant)
+        Color.White else MaterialTheme.colorScheme.onSurfaceVariant
 
     Box(
         modifier = modifier
@@ -32,25 +36,6 @@ fun StatusChip(
             .background(backgroundColor)
             .padding(horizontal = 8.dp, vertical = 4.dp)
     ) {
-        Text(
-            text = normalizedStatus,
-            style = MaterialTheme.typography.labelSmall,
-            color = textColor
-        )
+        Text(displayStatus, style = MaterialTheme.typography.labelSmall, color = textColor)
     }
-}
-
-@Composable
-private fun getStatusBackgroundColor(status: String): Color = when (status) {
-    "RUNNING" -> StatusGreen
-    "EXITED", "STOPPED" -> StatusOrange
-    "CREATED", "PENDING" -> StatusBlue
-    "TERMINATED", "FAILED" -> StatusRed
-    else -> MaterialTheme.colorScheme.surfaceVariant
-}
-
-@Composable
-private fun getStatusTextColor(status: String): Color = when (status) {
-    "RUNNING", "EXITED", "STOPPED", "CREATED", "PENDING", "TERMINATED", "FAILED" -> Color.White
-    else -> MaterialTheme.colorScheme.onSurfaceVariant
 }
