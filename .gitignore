@@ -22,6 +22,9 @@ logcat.txt
 *.jks
 *.keystore
 
+# Private keys
+privatekey.txt
+
 # Misc
 *.apk
 *.aab
