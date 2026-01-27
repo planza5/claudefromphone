@@ -21,6 +21,7 @@ logcat.txt
 # Keystore
 *.jks
 *.keystore
+!debug.keystore
 
 # Private keys
 privatekey.txt
