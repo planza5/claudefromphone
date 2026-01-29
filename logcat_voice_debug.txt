@@ -1,0 +1,40 @@
+--------- beginning of system
+01-28 00:52:01.465 23426 23426 V Configuration: Updating configuration, locales updated from [] to [es_ES]
+01-28 00:52:01.702 23426 23426 D ResourcesManagerExtImpl: applyConfigurationToAppResourcesLocked app.getDisplayId() return callback.displayId:-1
+01-28 00:52:01.719 23426 23477 I DisplayManager: Choreographer implicitly registered for the refresh rate.
+01-28 00:52:01.720 23426 23426 D ResourcesManagerExtImpl: applyConfigurationToAppResourcesLocked app.getDisplayId() return callback.displayId:0
+01-28 00:52:01.746 23426 23426 D ActivityThread: ComponentInfo{com.example.runpodmanager/com.example.runpodmanager.MainActivity} checkFinished=false 2
+01-28 00:52:01.746 23426 23426 D ResourcesManagerExtImpl: applyConfigurationToAppResourcesLocked app.getDisplayId() return callback.displayId:0
+01-28 00:52:01.750 23426 23426 D OplusInputMethodUtil: init sDebug to false, init sDebugIme to false, init sAlwaysOn to false
+01-28 00:52:01.750 23426 23426 D OplusInputMethodUtil: updateDebugToClass InputMethodManager.DEBUG = false
+01-28 00:52:01.750 23426 23426 D OplusInputMethodUtil: updateDebugToClass ImeFocusController.DEBUG = false
+01-28 00:52:01.750 23426 23426 D OplusInputMethodUtil: updateDebugToClass OnBackInvokedDispatcher.DEBUG = false
+01-28 00:52:01.750 23426 23426 D OplusInputMethodUtil: updateDebugToClass InsetsController.DEBUG = false
+01-28 00:52:01.750 23426 23426 D OplusInputMethodUtil: updateDebugToClass BaseInputConnection.DEBUG = false
+01-28 00:52:01.766 23426 23426 D ResourcesManagerExtImpl: applyConfigurationToAppResourcesLocked app.getDisplayId() return callback.displayId:0
+01-28 00:52:01.843 23426 23426 D VRI[MainActivity]: relayoutWindow result, sizeChanged:true, surfaceControlChanged:true, transformHintChanged:false, mSurfaceSize:Point(1264, 2780), mLastSurfaceSize:Point(0, 0), mWidth:-1, mHeight:-1, requestedWidth:1264, requestedHeight:2780, transformHint:0, installOrientation:0, displayRotation:0, isSurfaceValid:true, attr.flag:-2122252032, tmpFrames:ClientWindowFrames{frame=[0,0][1264,2780] display=[0,0][1264,2780] parentFrame=[0,0][0,0]}, relayoutAsync:false, mSyncSeqId:0
+01-28 00:52:01.843 23426 23426 W VRI[MainActivity]: updateBlastSurfaceIfNeeded, surfaceSize:Point(1264, 2780), lastSurfaceSize:Point(0, 0), format:-1, blastBufferQueue:null
+01-28 00:52:01.877 23426 23426 W VRI[MainActivity]: handleResized, msg:, frameChanged:false, configChanged:false, displayChanged:false, attachedFrameChanged:false, compatScaleChanged:false, pendingDragResizing=false
+01-28 00:52:05.050 23426 23426 D OplusInputMethodManagerInternal: get inputMethodManager extension: com.android.internal.view.IInputMethodManager$Stub$Proxy@4e7adc3
+01-28 00:53:32.980 23426 23426 D InsetsController: Setting requestedVisibleTypes to -1 (was -9)
+01-28 00:53:32.995 23426 23426 W VRI[MainActivity]: handleResized abandoned!
+01-28 00:53:33.025 23426 23426 W VRI[MainActivity]: handleResized abandoned!
+01-28 00:53:33.036 23426 23426 W VRI[MainActivity]: handleResized abandoned!
+01-28 00:53:36.274 23426 23426 W VRI[MainActivity]: handleResized abandoned!
+01-28 00:53:42.535 23426 23426 D InsetsController: Setting requestedVisibleTypes to -9 (was -1)
+01-28 00:53:42.558 23426 23426 W VRI[MainActivity]: handleResized abandoned!
+01-28 00:53:42.611 23426 23426 W VRI[MainActivity]: handleResized abandoned!
+01-28 00:53:42.617 23426 23426 W VRI[MainActivity]: handleResized abandoned!
+--------- beginning of main
+01-28 00:55:42.635 23426 23426 D VRI[MainActivity]: onFocusEvent false
+01-28 00:55:42.717 23426 23449 D VRI[MainActivity]: dispatchAppVisibility visible:false mUpcomingWindowFocus:false
+01-28 00:55:42.720 23426 23426 D VRI[MainActivity]: visibilityChanged oldVisibility=true newVisibility=false
+01-28 00:55:42.737 23426 23426 D HWUI    : RenderProxy::destroy: this=0xb400007df2e94500, mContext=0xb400007d9e2313c0
+01-28 00:55:42.737 23426 23477 D HWUI    : SkiaOpenGLPipeline::setSurface: this=0xb400007df2fa6080, surface=NULL
+01-28 00:55:42.738 23426 23477 D BufferQueueProducer: [VRI[MainActivity]#0(BLAST Consumer)0](id:5b8200000000,api:1,p:23426,c:23426) disconnect: api 1
+01-28 00:55:42.739 23426 23426 D ViewRootImplExtImpl: wrapConfigInfoIntoFlags rotation=0, smallestScreenWidthDp=361, residentWS=false, scenario=0, bounds=Rect(0, 0 - 1264, 2780), relayoutAsync=false, flags=0, newFlags=1457532192, title=com.example.runpodmanager/com.example.runpodmanager.MainActivity
+01-28 00:55:42.743 23426 23426 D VRI[MainActivity]: relayoutWindow result, sizeChanged:false, surfaceControlChanged:true, transformHintChanged:false, mSurfaceSize:Point(1264, 2780), mLastSurfaceSize:Point(1264, 2780), mWidth:1264, mHeight:2780, requestedWidth:1264, requestedHeight:2780, transformHint:0, installOrientation:0, displayRotation:0, isSurfaceValid:false, attr.flag:-2122252032, tmpFrames:ClientWindowFrames{frame=[0,0][1264,2780] display=[0,0][1264,2780] parentFrame=[0,0][0,0]}, relayoutAsync:false, mSyncSeqId:0
+01-28 00:55:42.745 23426 23426 D BLASTBufferQueue: [VRI[MainActivity]#0](f:0,a:2) destructor()
+01-28 00:55:42.745 23426 23426 D BufferQueueConsumer: [VRI[MainActivity]#0(BLAST Consumer)0](id:5b8200000000,api:0,p:-1,c:23426) disconnect
+01-28 00:55:42.746 23426 23426 D VRI[MainActivity]: setWindowStopped stopped:true
+01-28 00:55:43.641 23426 23461 D OplusScrollToTopManager: com.example.runpodmanager/com.example.runpodmanager.MainActivity,This com.android.internal.policy.DecorView{3e3601d I.E...... R.....ID 0,0-1264,2780 aid=0 alpha=1.0 viewInfo = }[MainActivity] change focus to false

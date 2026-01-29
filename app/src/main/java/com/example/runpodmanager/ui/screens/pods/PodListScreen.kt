@@ -45,7 +45,7 @@ fun PodListScreen(
     viewModel: PodListViewModel = hiltViewModel(),
     shouldRefresh: Boolean = false,
     onRefreshHandled: () -> Unit = {},
-    onNavigateToDetail: (String) -> Unit,
+    onNavigateToTerminal: (host: String, port: Int) -> Unit,
     onNavigateToCreate: () -> Unit,
     onNavigateToSettings: () -> Unit
 ) {
@@ -163,7 +163,14 @@ fun PodListScreen(
                         ) { pod ->
                             PodCard(
                                 pod = pod,
-                                onClick = { onNavigateToDetail(pod.id) },
+                                onClick = { },
+                                onSshClick = {
+                                    pod.publicIp?.let { ip ->
+                                        pod.portMappings?.get("22")?.let { port ->
+                                            onNavigateToTerminal(ip, port)
+                                        }
+                                    }
+                                },
                                 onStartPod = { viewModel.startPod(pod.id) },
                                 onStopPod = { viewModel.stopPod(pod.id) },
                                 onDeletePod = { podToDelete = pod.id }

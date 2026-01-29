@@ -7,7 +7,6 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
 import com.example.runpodmanager.ui.screens.create.CreatePodScreen
-import com.example.runpodmanager.ui.screens.pods.PodDetailScreen
 import com.example.runpodmanager.ui.screens.pods.PodListScreen
 import com.example.runpodmanager.ui.screens.settings.SettingsScreen
 import com.example.runpodmanager.ui.screens.splash.SplashScreen
@@ -17,9 +16,6 @@ sealed class Screen(val route: String) {
     data object Splash : Screen("splash")
     data object Settings : Screen("settings")
     data object PodList : Screen("pods")
-    data object PodDetail : Screen("pods/{podId}") {
-        fun createRoute(podId: String) = "pods/$podId"
-    }
     data object CreatePod : Screen("create")
     data object Terminal : Screen("terminal/{host}/{port}") {
         fun createRoute(host: String, port: Int) = "terminal/$host/$port"
@@ -67,32 +63,14 @@ fun NavGraph(
                 onRefreshHandled = {
                     backStackEntry.savedStateHandle["refresh"] = false
                 },
-                onNavigateToDetail = { podId ->
-                    navController.navigate(Screen.PodDetail.createRoute(podId))
+                onNavigateToTerminal = { host, port ->
+                    navController.navigate(Screen.Terminal.createRoute(host, port))
                 },
                 onNavigateToCreate = {
                     navController.navigate(Screen.CreatePod.route)
                 },
                 onNavigateToSettings = {
                     navController.navigate(Screen.Settings.route)
-                }
-            )
-        }
-
-        composable(
-            route = Screen.PodDetail.route,
-            arguments = listOf(
-                navArgument("podId") { type = NavType.StringType }
-            )
-        ) {
-            PodDetailScreen(
-                onNavigateBack = { navController.popBackStack() },
-                onPodDeleted = {
-                    navController.previousBackStackEntry?.savedStateHandle?.set("refresh", true)
-                    navController.popBackStack()
-                },
-                onNavigateToTerminal = { host, port ->
-                    navController.navigate(Screen.Terminal.createRoute(host, port))
                 }
             )
         }

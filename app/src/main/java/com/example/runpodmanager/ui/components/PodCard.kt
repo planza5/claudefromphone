@@ -1,6 +1,7 @@
 package com.example.runpodmanager.ui.components
 
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -28,6 +29,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.runpodmanager.data.model.Pod
@@ -37,6 +39,7 @@ import com.example.runpodmanager.data.model.Pod
 fun PodCard(
     pod: Pod,
     onClick: () -> Unit,
+    onSshClick: () -> Unit = {},
     onStartPod: () -> Unit = {},
     onStopPod: () -> Unit = {},
     onDeletePod: () -> Unit = {},
@@ -80,16 +83,22 @@ fun PodCard(
                     StatusChip(status = pod.desiredStatus ?: "UNKNOWN")
                 }
 
-                // Línea 2: SSH command
+                // Línea 2: SSH command (clickeable si está disponible)
                 Text(
                     text = sshCommand ?: "SSH no disponible",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = if (sshCommand != null)
-                        MaterialTheme.colorScheme.onSurfaceVariant
+                    style = MaterialTheme.typography.bodySmall.copy(
+                        textDecoration = if (isRunning && sshCommand != null) TextDecoration.Underline else TextDecoration.None
+                    ),
+                    color = if (isRunning && sshCommand != null)
+                        MaterialTheme.colorScheme.primary
                     else
                         MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
                     maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = if (isRunning && sshCommand != null)
+                        Modifier.clickable { onSshClick() }
+                    else
+                        Modifier
                 )
             }
         }

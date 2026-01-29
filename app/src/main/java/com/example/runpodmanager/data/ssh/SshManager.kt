@@ -21,8 +21,10 @@ import java.io.OutputStream
 import net.schmizz.sshj.DefaultConfig
 import net.schmizz.sshj.SSHClient
 import net.schmizz.sshj.connection.channel.direct.Session
+import net.schmizz.sshj.sftp.SFTPClient
 import net.schmizz.sshj.transport.verification.PromiscuousVerifier
 import net.schmizz.sshj.userauth.keyprovider.PKCS8KeyFile
+import java.io.File
 import org.bouncycastle.jce.provider.BouncyCastleProvider
 import java.io.StringReader
 import java.net.InetAddress
@@ -267,6 +269,59 @@ class SshManager @Inject constructor(
         } catch (e: Exception) {
             // Solo log, no desconectar por error de resize
             Log.w(TAG, "Error redimensionando PTY (no crítico): ${e.message}")
+        }
+    }
+
+    /**
+     * Descarga un archivo remoto usando SFTP.
+     * @param remotePath Ruta del archivo en el servidor
+     * @param localFile Archivo local donde guardar
+     * @param onProgress Callback con el progreso (0.0 a 1.0)
+     */
+    suspend fun downloadFile(
+        remotePath: String,
+        localFile: File,
+        onProgress: ((Float) -> Unit)? = null
+    ): Result<Unit> = withContext(Dispatchers.IO) {
+        var sftp: SFTPClient? = null
+        try {
+            val client = sshClient ?: return@withContext Result.failure(Exception("No conectado"))
+
+            Log.d(TAG, "Iniciando descarga SFTP: $remotePath -> ${localFile.absolutePath}")
+            sftp = client.newSFTPClient()
+
+            // Obtener tamaño del archivo para calcular progreso
+            val fileAttributes = sftp.stat(remotePath)
+            val totalSize = fileAttributes.size
+            Log.d(TAG, "Tamaño del archivo: $totalSize bytes")
+
+            // Crear directorio padre si no existe
+            localFile.parentFile?.mkdirs()
+
+            // Descargar con progreso
+            val remoteFile = sftp.open(remotePath)
+            localFile.outputStream().use { outputStream ->
+                val buffer = ByteArray(32768)
+                var bytesRead: Long = 0
+                val inputStream = remoteFile.RemoteFileInputStream()
+
+                while (true) {
+                    val read = inputStream.read(buffer)
+                    if (read == -1) break
+                    outputStream.write(buffer, 0, read)
+                    bytesRead += read
+                    onProgress?.invoke(bytesRead.toFloat() / totalSize)
+                }
+            }
+            remoteFile.close()
+            sftp.close()
+
+            Log.d(TAG, "Descarga completada: ${localFile.absolutePath}")
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error descargando archivo: ${e.message}", e)
+            sftp?.close()
+            Result.failure(e)
         }
     }
 }

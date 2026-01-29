@@ -29,7 +29,15 @@
       "Bash(xxd:*)",
       "Bash(./gradlew compileDebugKotlin:*)",
       "Bash(chmod:*)",
-      "Bash(bash find_android_projects.sh:*)"
+      "Bash(bash find_android_projects.sh:*)",
+      "Bash(FILTER_BRANCH_SQUELCH_WARNING=1 git filter-branch:*)",
+      "Bash(keytool:*)",
+      "Bash(test:*)",
+      "Bash(git commit:*)",
+      "Bash(./gradlew clean:*)",
+      "Bash(adb uninstall:*)",
+      "Bash(./gradlew installDebug:*)",
+      "Bash(adb -s realme:37749 install:*)"
     ]
   }
 }

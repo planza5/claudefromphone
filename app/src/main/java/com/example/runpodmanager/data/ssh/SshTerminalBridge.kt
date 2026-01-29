@@ -11,6 +11,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -30,8 +31,25 @@ class SshTerminalBridge @Inject constructor(
 
     private var session: TerminalSession? = null
     private var outputJob: Job? = null
+    private var writeJob: Job? = null
     private val mainHandler = Handler(Looper.getMainLooper())
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    // Channel to maintain write order
+    private val writeChannel = Channel<ByteArray>(Channel.UNLIMITED)
+
+    init {
+        // Start a single coroutine to process writes in order
+        writeJob = scope.launch {
+            for (bytes in writeChannel) {
+                try {
+                    sshManager.sendRawBytes(bytes)
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error sending bytes: ${e.message}", e)
+                }
+            }
+        }
+    }
 
     /**
      * Create a new TerminalSession in external mode.
@@ -79,13 +97,14 @@ class SshTerminalBridge @Inject constructor(
      * Called when the user types in the terminal - sends data to SSH.
      */
     override fun write(data: ByteArray, offset: Int, count: Int) {
+        val bytes = if (offset == 0 && count == data.size) {
+            data.copyOf()
+        } else {
+            data.copyOfRange(offset, offset + count)
+        }
+        Log.d(TAG, "write() called with $count bytes: ${String(bytes)}")
+        // Send synchronously to maintain order
         scope.launch {
-            val bytes = if (offset == 0 && count == data.size) {
-                data
-            } else {
-                data.copyOfRange(offset, offset + count)
-            }
-            Log.v(TAG, "Sending ${bytes.size} bytes to SSH")
             sshManager.sendRawBytes(bytes)
         }
     }
@@ -103,6 +122,14 @@ class SshTerminalBridge @Inject constructor(
     }
 
     /**
+     * Write bytes to SSH - same path as keyboard input.
+     */
+    fun writeToSsh(bytes: ByteArray) {
+        Log.d(TAG, "writeToSsh: ${bytes.size} bytes, content='${String(bytes, Charsets.UTF_8).replace("\n", "\\n")}'")
+        writeChannel.trySend(bytes.copyOf())
+    }
+
+    /**
      * Clean up resources.
      */
     fun cleanup() {
@@ -117,6 +144,8 @@ class SshTerminalBridge @Inject constructor(
      */
     fun destroy() {
         cleanup()
+        writeJob?.cancel()
+        writeChannel.close()
         scope.cancel()
     }
 

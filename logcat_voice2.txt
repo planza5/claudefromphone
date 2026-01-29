@@ -1,0 +1,14 @@
+01-27 03:12:51.495 D/TerminalScreen( 8637): DisposableEffect: Destroying SpeechRecognizer
+01-27 03:12:51.499 D/SshTerminalBridge( 8637): Cleaning up bridge resources
+01-27 03:12:51.499 D/SshTerminalBridge( 8637): Stopping SSH output collection
+01-27 03:13:02.597 D/SshTerminalBridge(10465): Stopping SSH output collection
+01-27 03:13:02.602 D/TerminalScreen(10465): Creating SpeechRecognizer, isAvailable: true
+01-27 03:13:02.603 D/TerminalScreen(10465): SpeechRecognizer created: android.speech.SpeechRecognizerProxy@a50bf50
+01-27 03:13:02.631 D/TerminalScreen(10465): DisposableEffect: Setting up RecognitionListener for android.speech.SpeechRecognizerProxy@a50bf50
+01-27 03:13:04.748 D/SshTerminalBridge(10465): Creating external terminal session with 2000 transcript rows
+01-27 03:13:04.749 D/SshTerminalBridge(10465): Starting SSH output collection
+01-27 03:13:04.755 V/SshTerminalBridge(10465): Received 931 bytes from SSH
+01-27 03:13:05.827 D/SshTerminalBridge(10465): Terminal resized to 37x11, updating SSH PTY
+01-27 03:13:06.136 V/SshTerminalBridge(10465): Received 50 bytes from SSH
+01-27 03:13:06.852 D/SshTerminalBridge(10465): Terminal resized to 37x10, updating SSH PTY
+01-27 03:13:06.956 V/SshTerminalBridge(10465): Received 50 bytes from SSH

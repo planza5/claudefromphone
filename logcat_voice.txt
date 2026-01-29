@@ -1,0 +1,28 @@
+--------- beginning of main
+01-27 03:06:08.735 D/SshTerminalBridge( 6035): Stopping SSH output collection
+01-27 03:06:08.738 D/SshManager( 6035): Conectando a 213.173.105.83:35351 como root
+01-27 03:06:09.192 D/SshManager( 6035): Conectando al servidor SSH...
+01-27 03:06:09.192 D/SshManager( 6035): Resolviendo 213.173.105.83 -> 213.173.105.83
+01-27 03:06:09.878 D/SshManager( 6035): Conexion TCP establecida!
+01-27 03:06:09.880 D/SshManager( 6035): Clave privada encontrada, longitud: 3272
+01-27 03:06:09.880 D/SshManager( 6035): Primeros 50 chars: -----BEGIN PRIVATE KEY-----
+01-27 03:06:09.880 D/SshManager( 6035): MIIJQwIBADANBgkqhkiG9w
+01-27 03:06:09.881 D/SshManager( 6035): Clave privada cargada, autenticando...
+01-27 03:06:10.362 D/SshManager( 6035): Autenticacion exitosa!
+01-27 03:06:10.362 D/SshManager( 6035): Iniciando sesion...
+01-27 03:06:10.643 D/SshManager( 6035): PTY asignado con xterm-256color!
+01-27 03:06:10.644 D/SshManager( 6035): Iniciando shell...
+01-27 03:06:10.723 D/SshManager( 6035): Shell iniciado!
+01-27 03:06:10.727 D/SshManager( 6035): Iniciando lector de salida en scope independiente...
+01-27 03:06:10.739 D/SshTerminalBridge( 6035): Creating external terminal session with 2000 transcript rows
+01-27 03:06:10.739 D/SshTerminalBridge( 6035): Starting SSH output collection
+01-27 03:06:10.752 V/SshTerminalBridge( 6035): Received 189 bytes from SSH
+01-27 03:06:11.739 D/SshTerminalBridge( 6035): Terminal resized to 37x11, updating SSH PTY
+01-27 03:06:11.744 D/SshManager( 6035): PTY redimensionado a 37x11
+01-27 03:06:11.816 V/SshTerminalBridge( 6035): Received 50 bytes from SSH
+01-27 03:06:12.747 D/SshTerminalBridge( 6035): Terminal resized to 37x10, updating SSH PTY
+01-27 03:06:12.758 D/SshManager( 6035): PTY redimensionado a 37x10
+01-27 03:06:12.872 V/SshTerminalBridge( 6035): Received 50 bytes from SSH
+01-27 03:06:16.986 D/SshTerminalBridge( 6035): write() called with 1 bytes: 
+01-27 03:06:16.988 D/SshTerminalBridge( 6035): Sending 1 bytes to SSH: 
+01-27 03:06:17.068 V/SshTerminalBridge( 6035): Received 65 bytes from SSH
