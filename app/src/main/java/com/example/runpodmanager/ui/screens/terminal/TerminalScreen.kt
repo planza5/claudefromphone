@@ -279,13 +279,14 @@ fun TerminalScreen(
 
     // APK Download Dialog
     if (uiState.showApkDialog) {
-        Log.d("TerminalScreen", "=== DIALOG VISIBLE === isDownloaded=${uiState.downloadedApkFile != null}, isWaiting=${uiState.isWaitingUninstall}")
+        Log.d("TerminalScreen", "=== DIALOG VISIBLE === isDownloaded=${uiState.downloadedApkFile != null}, isWaitingUninstall=${uiState.isWaitingUninstall}, isWaitingInstall=${uiState.isWaitingInstall}")
         ApkDownloadDialog(
             apkPath = uiState.apkRemotePath,
             isDownloading = uiState.isDownloadingApk,
             downloadProgress = uiState.downloadProgress,
             isDownloaded = uiState.downloadedApkFile != null,
             isWaitingUninstall = uiState.isWaitingUninstall,
+            isWaitingInstall = uiState.isWaitingInstall,
             onDownload = { viewModel.downloadApk() },
             onInstall = { viewModel.installApk() },
             onUninstallAndInstall = {
@@ -456,7 +457,8 @@ fun TerminalScreen(
                             isBuilding = uiState.isBuilding,
                             onProjectClick = { project -> viewModel.selectProject(project) },
                             onBackClick = { viewModel.goBackFromProject() },
-                            onBuildClick = { viewModel.buildAndInstall() }
+                            onBuildClick = { viewModel.buildAndInstall() },
+                            onUninstallClick = { viewModel.uninstallApp() }
                         )
                     }
                 }
@@ -488,13 +490,15 @@ fun ProjectsBar(
     isBuilding: Boolean,
     onProjectClick: (String) -> Unit,
     onBackClick: () -> Unit,
-    onBuildClick: () -> Unit
+    onBuildClick: () -> Unit,
+    onUninstallClick: () -> Unit
 ) {
     if (projects.isEmpty() && !isLoading && selectedProject == null) return
 
     val keyColor = Color(0xFF2D2D2D)
     val textColor = Color(0xFF9CDCFE)
     val accentColor = Color(0xFF4EC9B0)
+    val warningColor = Color(0xFFFF9800)
 
     Surface(color = Color(0xFF1A1A1A), modifier = Modifier.fillMaxWidth()) {
         if (selectedProject != null) {
@@ -502,16 +506,16 @@ fun ProjectsBar(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 4.dp, vertical = 4.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 Surface(
                     onClick = onBackClick,
                     color = keyColor,
                     shape = RoundedCornerShape(4.dp),
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier.weight(0.8f)
                 ) {
                     Row(
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 10.dp),
                         horizontalArrangement = Arrangement.Center,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
@@ -521,8 +525,6 @@ fun ProjectsBar(
                             tint = textColor,
                             modifier = Modifier.size(16.dp)
                         )
-                        Spacer(Modifier.size(4.dp))
-                        Text("Back", color = textColor)
                     }
                 }
                 Surface(
@@ -547,6 +549,27 @@ fun ProjectsBar(
                         } else {
                             Text("Build & Install", color = Color.Black)
                         }
+                    }
+                }
+                Surface(
+                    onClick = { if (!isBuilding) onUninstallClick() },
+                    color = if (isBuilding) keyColor else warningColor,
+                    shape = RoundedCornerShape(4.dp),
+                    modifier = Modifier.weight(1.2f)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            Icons.Default.Delete,
+                            contentDescription = null,
+                            tint = Color.Black,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(Modifier.size(4.dp))
+                        Text("Uninstall", color = Color.Black)
                     }
                 }
             }
@@ -588,6 +611,7 @@ fun ApkDownloadDialog(
     downloadProgress: Float,
     isDownloaded: Boolean,
     isWaitingUninstall: Boolean = false,
+    isWaitingInstall: Boolean = false,
     onDownload: () -> Unit,
     onInstall: () -> Unit,
     onUninstallAndInstall: () -> Unit,
@@ -595,16 +619,18 @@ fun ApkDownloadDialog(
 ) {
     val accentColor = Color(0xFF4EC9B0)
     val warningColor = Color(0xFFFF9800)
+    val isProcessing = isDownloading || isWaitingUninstall || isWaitingInstall
 
     AlertDialog(
-        onDismissRequest = { if (!isDownloading && !isWaitingUninstall) onDismiss() },
+        onDismissRequest = { if (!isProcessing) onDismiss() },
         containerColor = Color(0xFF1E1E1E),
         titleContentColor = Color.White,
         textContentColor = Color.LightGray,
         title = {
             Text(
                 when {
-                    isWaitingUninstall -> "Esperando desinstalación..."
+                    isWaitingInstall -> "Instalando..."
+                    isWaitingUninstall -> "Desinstalando..."
                     isDownloaded -> "APK Descargado"
                     else -> "APK Generado"
                 },
@@ -613,70 +639,95 @@ fun ApkDownloadDialog(
         },
         text = {
             Column {
-                if (isWaitingUninstall) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(24.dp),
-                            color = warningColor,
-                            strokeWidth = 2.dp
-                        )
+                when {
+                    isWaitingInstall -> {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(24.dp),
+                                color = accentColor,
+                                strokeWidth = 2.dp
+                            )
+                            Text(
+                                "Confirma la instalación en el diálogo del sistema.",
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(8.dp))
                         Text(
-                            "Confirma la desinstalación en el diálogo del sistema.",
-                            style = MaterialTheme.typography.bodyMedium
+                            "El diálogo se cerrará automáticamente al completar.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Color.Gray
                         )
                     }
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        "La instalación comenzará automáticamente después.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = Color.Gray
-                    )
-                } else if (!isDownloaded) {
-                    Text(
-                        "Se ha generado un APK:",
-                        style = MaterialTheme.typography.bodyMedium
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        apkPath?.substringAfterLast("/") ?: "app.apk",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = accentColor
-                    )
-                } else if (isDownloading) {
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Text("Descargando...")
-                    Spacer(modifier = Modifier.height(8.dp))
-                    LinearProgressIndicator(
-                        progress = { downloadProgress },
-                        modifier = Modifier.fillMaxWidth(),
-                        color = accentColor
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        "${(downloadProgress * 100).toInt()}%",
-                        style = MaterialTheme.typography.bodySmall
-                    )
-                } else if (isDownloaded) {
-                    Text(
-                        "El APK se ha descargado correctamente.",
-                        style = MaterialTheme.typography.bodyMedium
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        "Si la instalacion falla por conflicto, usa 'Desinstalar e Instalar'.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = Color.Gray
-                    )
+                    isWaitingUninstall -> {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(24.dp),
+                                color = warningColor,
+                                strokeWidth = 2.dp
+                            )
+                            Text(
+                                "Confirma la desinstalación en el diálogo del sistema.",
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            "La instalación comenzará automáticamente después.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Color.Gray
+                        )
+                    }
+                    !isDownloaded -> {
+                        Text(
+                            "Se ha generado un APK:",
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            apkPath?.substringAfterLast("/") ?: "app.apk",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = accentColor
+                        )
+                    }
+                    isDownloading -> {
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Text("Descargando...")
+                        Spacer(modifier = Modifier.height(8.dp))
+                        LinearProgressIndicator(
+                            progress = { downloadProgress },
+                            modifier = Modifier.fillMaxWidth(),
+                            color = accentColor
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            "${(downloadProgress * 100).toInt()}%",
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
+                    isDownloaded -> {
+                        Text(
+                            "El APK se ha descargado correctamente.",
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            "Si la instalación falla por conflicto, usa 'Desinstalar e Instalar'.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Color.Gray
+                        )
+                    }
                 }
             }
         },
         confirmButton = {
-            if (isWaitingUninstall) {
-                // No mostrar botones de acción mientras espera
-            } else if (isDownloaded) {
+            if (!isProcessing && isDownloaded) {
                 Column(
                     horizontalAlignment = Alignment.End,
                     verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -698,7 +749,7 @@ fun ApkDownloadDialog(
                         Text("Desinstalar e Instalar", color = Color.Black)
                     }
                 }
-            } else if (!isDownloading) {
+            } else if (!isProcessing && !isDownloaded) {
                 Button(
                     onClick = onDownload,
                     colors = ButtonDefaults.buttonColors(containerColor = accentColor)
@@ -710,7 +761,7 @@ fun ApkDownloadDialog(
             }
         },
         dismissButton = {
-            if (!isDownloading) {
+            if (!isProcessing) {
                 TextButton(onClick = onDismiss) {
                     Text("Cancelar", color = Color.Gray)
                 }

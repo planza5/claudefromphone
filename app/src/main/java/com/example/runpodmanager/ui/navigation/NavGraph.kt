@@ -47,7 +47,14 @@ fun NavGraph(
 
         composable(Screen.Settings.route) {
             SettingsScreen(
-                onNavigateBack = { navController.popBackStack() },
+                onNavigateBack = {
+                    // Si no hay back stack (venimos de Splash), navegar a PodList
+                    if (!navController.popBackStack()) {
+                        navController.navigate(Screen.PodList.route) {
+                            popUpTo(Screen.Settings.route) { inclusive = true }
+                        }
+                    }
+                },
                 onNavigateToPods = {
                     navController.navigate(Screen.PodList.route) {
                         popUpTo(Screen.Settings.route) { inclusive = true }
