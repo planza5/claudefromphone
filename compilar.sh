@@ -35,7 +35,6 @@ echo -e "${YELLOW}Verificando herramientas...${NC}"
 echo "JAVA_HOME: $JAVA_HOME"
 echo "ANDROID_HOME: $ANDROID_HOME"
 java -version 2>&1 | head -1
-gradle -version 2>&1 | head -1
 
 # Compilar
 echo ""
@@ -58,5 +57,5 @@ fi
 echo ""
 echo -e "${GREEN}=========================================="
 echo -e "  BUILD SUCCESSFUL"
+echo -e "  APK: $APK_PATH"
 echo -e "==========================================${NC}"
-echo -e "${GREEN}APK: $APK_PATH${NC}"

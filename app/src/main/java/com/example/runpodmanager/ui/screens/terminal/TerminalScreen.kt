@@ -1,5 +1,15 @@
 package com.example.runpodmanager.ui.screens.terminal
 
+import android.Manifest
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Bundle
+import android.speech.RecognitionListener
+import android.speech.RecognizerIntent
+import android.speech.SpeechRecognizer
+import android.util.Log
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -24,6 +34,7 @@ import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.InstallMobile
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.LinkOff
+import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -47,18 +58,23 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import com.termux.view.TerminalView
+import kotlinx.coroutines.launch
+import java.util.Locale
 
 private data class ExtraKeyData(val label: String, val bytes: ByteArray)
 
@@ -77,10 +93,13 @@ private val extraKeys = listOf(
 @Composable
 fun ExtraKeysBar(
     onKey: (ByteArray) -> Unit,
-    onRequestFocus: () -> Unit
+    onRequestFocus: () -> Unit,
+    onMicClick: () -> Unit,
+    isListening: Boolean = false
 ) {
     val keyColor = Color(0xFF2D2D2D)
     val textColor = Color(0xFF4EC9B0)
+    val micActiveColor = Color(0xFFE53935)
 
     val sendKey: (ByteArray) -> Unit = { bytes ->
         onKey(bytes)
@@ -95,6 +114,23 @@ fun ExtraKeysBar(
             horizontalArrangement = Arrangement.spacedBy(4.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
+            // Botón de micrófono
+            Surface(
+                onClick = onMicClick,
+                color = if (isListening) micActiveColor else keyColor,
+                shape = RoundedCornerShape(4.dp),
+                modifier = Modifier.padding(2.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Mic,
+                    contentDescription = "Voz",
+                    tint = if (isListening) Color.White else textColor,
+                    modifier = Modifier
+                        .padding(horizontal = 12.dp, vertical = 8.dp)
+                        .size(20.dp)
+                )
+            }
+
             extraKeys.forEach { key ->
                 Surface(
                     onClick = { sendKey(key.bytes) },
@@ -118,6 +154,121 @@ fun TerminalScreen(
     val uiState by viewModel.uiState.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
     val lifecycleOwner = LocalLifecycleOwner.current
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+
+    // Estado para el reconocimiento de voz
+    var isListening by remember { mutableStateOf(false) }
+
+    // SpeechRecognizer sin diálogo
+    val speechRecognizer = remember {
+        SpeechRecognizer.createSpeechRecognizer(context)
+    }
+
+    // Configurar el listener del reconocimiento
+    DisposableEffect(Unit) {
+        val listener = object : RecognitionListener {
+            override fun onReadyForSpeech(params: Bundle?) {
+                Log.d("VoiceInput", "Listo para escuchar")
+            }
+
+            override fun onBeginningOfSpeech() {
+                Log.d("VoiceInput", "Comenzó a hablar")
+            }
+
+            override fun onRmsChanged(rmsdB: Float) {}
+
+            override fun onBufferReceived(buffer: ByteArray?) {}
+
+            override fun onEndOfSpeech() {
+                Log.d("VoiceInput", "Terminó de hablar")
+                isListening = false
+            }
+
+            override fun onError(error: Int) {
+                Log.e("VoiceInput", "Error de reconocimiento: $error")
+                isListening = false
+                val errorMsg = when (error) {
+                    SpeechRecognizer.ERROR_NO_MATCH -> "No se reconoció ninguna palabra"
+                    SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "Tiempo de espera agotado"
+                    else -> "Error de reconocimiento"
+                }
+                scope.launch {
+                    snackbarHostState.showSnackbar(errorMsg)
+                }
+            }
+
+            override fun onResults(results: Bundle?) {
+                isListening = false
+                val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                val spokenText = matches?.firstOrNull()
+                if (!spokenText.isNullOrEmpty()) {
+                    Log.d("VoiceInput", "Texto reconocido: $spokenText")
+                    viewModel.sendVoiceCommand(spokenText)
+                }
+            }
+
+            override fun onPartialResults(partialResults: Bundle?) {}
+
+            override fun onEvent(eventType: Int, params: Bundle?) {}
+        }
+        speechRecognizer.setRecognitionListener(listener)
+
+        onDispose {
+            speechRecognizer.destroy()
+        }
+    }
+
+    // Launcher para el permiso de audio
+    val permissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (!isGranted) {
+            scope.launch {
+                snackbarHostState.showSnackbar("Se necesita permiso de micrófono para usar voz")
+            }
+        }
+    }
+
+    // Función para iniciar el reconocimiento de voz (sin diálogo)
+    fun startVoiceRecognition() {
+        // Verificar si el reconocimiento de voz está disponible
+        if (!SpeechRecognizer.isRecognitionAvailable(context)) {
+            scope.launch {
+                snackbarHostState.showSnackbar("Reconocimiento de voz no disponible")
+            }
+            return
+        }
+
+        // Verificar permiso
+        val hasPermission = ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.RECORD_AUDIO
+        ) == PackageManager.PERMISSION_GRANTED
+
+        if (!hasPermission) {
+            permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+            return
+        }
+
+        // Iniciar reconocimiento silencioso (sin diálogo)
+        isListening = true
+        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault())
+            putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
+            putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, false)
+        }
+        try {
+            speechRecognizer.startListening(intent)
+        } catch (e: Exception) {
+            isListening = false
+            scope.launch {
+                snackbarHostState.showSnackbar("Error al iniciar reconocimiento")
+            }
+            Log.e("VoiceInput", "Error starting speech recognizer", e)
+        }
+    }
 
     LaunchedEffect(uiState.errorMessage) {
         uiState.errorMessage?.let {
@@ -128,14 +279,19 @@ fun TerminalScreen(
 
     // APK Download Dialog
     if (uiState.showApkDialog) {
+        Log.d("TerminalScreen", "=== DIALOG VISIBLE === isDownloaded=${uiState.downloadedApkFile != null}, isWaiting=${uiState.isWaitingUninstall}")
         ApkDownloadDialog(
             apkPath = uiState.apkRemotePath,
             isDownloading = uiState.isDownloadingApk,
             downloadProgress = uiState.downloadProgress,
             isDownloaded = uiState.downloadedApkFile != null,
+            isWaitingUninstall = uiState.isWaitingUninstall,
             onDownload = { viewModel.downloadApk() },
             onInstall = { viewModel.installApk() },
-            onUninstallAndInstall = { viewModel.uninstallAndInstallApk() },
+            onUninstallAndInstall = {
+                Log.d("TerminalScreen", "Botón Desinstalar e Instalar pulsado!")
+                viewModel.uninstallAndInstallApk()
+            },
             onDismiss = { viewModel.dismissApkDialog() }
         )
     }
@@ -289,7 +445,9 @@ fun TerminalScreen(
                         )
                         ExtraKeysBar(
                             onKey = { sequence -> viewModel.sendEscapeSequence(sequence) },
-                            onRequestFocus = { controller.showKeyboard() }
+                            onRequestFocus = { controller.showKeyboard() },
+                            onMicClick = { startVoiceRecognition() },
+                            isListening = isListening
                         )
                         ProjectsBar(
                             projects = uiState.projects,
@@ -429,6 +587,7 @@ fun ApkDownloadDialog(
     isDownloading: Boolean,
     downloadProgress: Float,
     isDownloaded: Boolean,
+    isWaitingUninstall: Boolean = false,
     onDownload: () -> Unit,
     onInstall: () -> Unit,
     onUninstallAndInstall: () -> Unit,
@@ -438,19 +597,44 @@ fun ApkDownloadDialog(
     val warningColor = Color(0xFFFF9800)
 
     AlertDialog(
-        onDismissRequest = { if (!isDownloading) onDismiss() },
+        onDismissRequest = { if (!isDownloading && !isWaitingUninstall) onDismiss() },
         containerColor = Color(0xFF1E1E1E),
         titleContentColor = Color.White,
         textContentColor = Color.LightGray,
         title = {
             Text(
-                if (isDownloaded) "APK Descargado" else "APK Generado",
+                when {
+                    isWaitingUninstall -> "Esperando desinstalación..."
+                    isDownloaded -> "APK Descargado"
+                    else -> "APK Generado"
+                },
                 style = MaterialTheme.typography.titleLarge
             )
         },
         text = {
             Column {
-                if (!isDownloaded) {
+                if (isWaitingUninstall) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(24.dp),
+                            color = warningColor,
+                            strokeWidth = 2.dp
+                        )
+                        Text(
+                            "Confirma la desinstalación en el diálogo del sistema.",
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        "La instalación comenzará automáticamente después.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color.Gray
+                    )
+                } else if (!isDownloaded) {
                     Text(
                         "Se ha generado un APK:",
                         style = MaterialTheme.typography.bodyMedium
@@ -461,9 +645,7 @@ fun ApkDownloadDialog(
                         style = MaterialTheme.typography.bodySmall,
                         color = accentColor
                     )
-                }
-
-                if (isDownloading) {
+                } else if (isDownloading) {
                     Spacer(modifier = Modifier.height(16.dp))
                     Text("Descargando...")
                     Spacer(modifier = Modifier.height(8.dp))
@@ -477,9 +659,7 @@ fun ApkDownloadDialog(
                         "${(downloadProgress * 100).toInt()}%",
                         style = MaterialTheme.typography.bodySmall
                     )
-                }
-
-                if (isDownloaded) {
+                } else if (isDownloaded) {
                     Text(
                         "El APK se ha descargado correctamente.",
                         style = MaterialTheme.typography.bodyMedium
@@ -494,7 +674,9 @@ fun ApkDownloadDialog(
             }
         },
         confirmButton = {
-            if (isDownloaded) {
+            if (isWaitingUninstall) {
+                // No mostrar botones de acción mientras espera
+            } else if (isDownloaded) {
                 Column(
                     horizontalAlignment = Alignment.End,
                     verticalArrangement = Arrangement.spacedBy(8.dp)

@@ -1,8 +1,11 @@
 package com.example.runpodmanager.ui.screens.terminal
 
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.net.Uri
+import android.os.Build
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import androidx.lifecycle.SavedStateHandle
@@ -43,7 +46,11 @@ data class TerminalUiState(
     val showApkDialog: Boolean = false,
     val isDownloadingApk: Boolean = false,
     val downloadProgress: Float = 0f,
-    val downloadedApkFile: File? = null
+    val downloadedApkFile: File? = null,
+    // Auto build-download-install flow
+    val buildStatus: String = "",
+    val isAutoInstalling: Boolean = false,
+    val isWaitingUninstall: Boolean = false
 )
 
 @HiltViewModel
@@ -63,6 +70,13 @@ class TerminalViewModel @Inject constructor(
 
     private val host: String = savedStateHandle.get<String>("host") ?: ""
     private val port: Int = savedStateHandle.get<Int>("port") ?: 22
+
+    // Para auto-instalar después de desinstalar
+    private var pendingInstallPackage: String? = null
+    private var uninstallReceiver: BroadcastReceiver? = null
+
+    // Job para monitorear el build
+    private var buildMonitorJob: kotlinx.coroutines.Job? = null
 
     init {
         _uiState.update { it.copy(host = host, port = port) }
@@ -180,6 +194,14 @@ class TerminalViewModel @Inject constructor(
         viewModelScope.launch { sshManager.sendRawBytes(bytes) }
     }
 
+    fun sendVoiceCommand(text: String) {
+        // Convertir a minúsculas y enviar sin Enter automático
+        val command = text.lowercase().replace("  ", "\t")
+        viewModelScope.launch {
+            sshManager.sendCommand(command)
+        }
+    }
+
     fun selectProject(project: String) {
         viewModelScope.launch {
             sshManager.sendCommand("cd $project\n")
@@ -194,7 +216,13 @@ class TerminalViewModel @Inject constructor(
     fun buildAndInstall() {
         val project = _uiState.value.selectedProject ?: return
         viewModelScope.launch {
-            _uiState.update { it.copy(isBuilding = true) }
+            _uiState.update {
+                it.copy(
+                    isBuilding = true,
+                    isAutoInstalling = true,
+                    buildStatus = "Compilando..."
+                )
+            }
             sshManager.sendCommand("/workspace/compilar.sh $project\n")
             // Monitorear la salida para detectar BUILD SUCCESSFUL
             monitorBuildOutput(project)
@@ -202,7 +230,10 @@ class TerminalViewModel @Inject constructor(
     }
 
     private fun monitorBuildOutput(project: String) {
-        viewModelScope.launch {
+        // Cancelar monitor anterior si existe
+        buildMonitorJob?.cancel()
+
+        buildMonitorJob = viewModelScope.launch {
             val outputBuffer = StringBuilder()
             sshManager.rawOutput.collect { bytes ->
                 val text = String(bytes, Charsets.UTF_8)
@@ -213,6 +244,7 @@ class TerminalViewModel @Inject constructor(
                     Log.d(TAG, "Build exitoso detectado, buscando APK...")
                     _uiState.update { it.copy(isBuilding = false) }
                     findGeneratedApk(project)
+                    buildMonitorJob?.cancel()
                     return@collect
                 }
 
@@ -220,6 +252,7 @@ class TerminalViewModel @Inject constructor(
                 if (outputBuffer.contains("BUILD FAILED") && _uiState.value.isBuilding) {
                     Log.d(TAG, "Build fallido detectado")
                     _uiState.update { it.copy(isBuilding = false) }
+                    buildMonitorJob?.cancel()
                     return@collect
                 }
 
@@ -306,22 +339,51 @@ class TerminalViewModel @Inject constructor(
     }
 
     fun uninstallAndInstallApk() {
-        val apkFile = _uiState.value.downloadedApkFile ?: return
+        Log.d(TAG, "uninstallAndInstallApk() llamado")
+        val apkFile = _uiState.value.downloadedApkFile
+        if (apkFile == null) {
+            Log.e(TAG, "downloadedApkFile es null!")
+            return
+        }
         try {
             // Obtener package name del APK
             val packageInfo = context.packageManager.getPackageArchiveInfo(apkFile.absolutePath, 0)
             val packageName = packageInfo?.packageName
+            Log.d(TAG, "Package name del APK: $packageName")
 
             if (packageName != null) {
+                // Verificar si la app está instalada
+                val isInstalled = try {
+                    context.packageManager.getPackageInfo(packageName, 0)
+                    true
+                } catch (e: Exception) {
+                    false
+                }
+                Log.d(TAG, "App instalada: $isInstalled")
+
+                if (!isInstalled) {
+                    // No está instalada, instalar directamente
+                    Log.d(TAG, "App no instalada, instalando directamente...")
+                    installApk()
+                    return
+                }
+
+                // Guardar el package que esperamos que se desinstale
+                pendingInstallPackage = packageName
+
+                // Registrar receiver para detectar cuando se desinstala
+                registerUninstallReceiver(packageName)
+
+                // Mostrar estado de espera
+                _uiState.update { it.copy(isWaitingUninstall = true) }
+
                 // Lanzar desinstalación
+                Log.d(TAG, "Lanzando intent de desinstalación para $packageName")
                 val uninstallIntent = Intent(Intent.ACTION_DELETE).apply {
                     data = Uri.parse("package:$packageName")
                     flags = Intent.FLAG_ACTIVITY_NEW_TASK
                 }
                 context.startActivity(uninstallIntent)
-
-                // Mantener el diálogo abierto para que pueda instalar después
-                _uiState.update { it.copy(showApkDialog = true) }
             } else {
                 _uiState.update { it.copy(errorMessage = "No se pudo obtener el package name del APK") }
             }
@@ -331,9 +393,56 @@ class TerminalViewModel @Inject constructor(
         }
     }
 
+    private fun registerUninstallReceiver(packageName: String) {
+        // Deregistrar receiver anterior si existe
+        unregisterUninstallReceiver()
+
+        uninstallReceiver = object : BroadcastReceiver() {
+            override fun onReceive(ctx: Context?, intent: Intent?) {
+                val removedPackage = intent?.data?.schemeSpecificPart
+                Log.d(TAG, "Package removed: $removedPackage, esperando: $pendingInstallPackage")
+
+                if (removedPackage == pendingInstallPackage) {
+                    Log.d(TAG, "Desinstalación detectada, instalando APK...")
+                    pendingInstallPackage = null
+                    unregisterUninstallReceiver()
+                    _uiState.update { it.copy(isWaitingUninstall = false, showApkDialog = false) }
+
+                    // Instalar el APK automáticamente
+                    installApk()
+                }
+            }
+        }
+
+        val filter = IntentFilter(Intent.ACTION_PACKAGE_REMOVED).apply {
+            addDataScheme("package")
+        }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            context.registerReceiver(uninstallReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+        } else {
+            context.registerReceiver(uninstallReceiver, filter)
+        }
+        Log.d(TAG, "Receiver registrado para detectar desinstalación de $packageName")
+    }
+
+    private fun unregisterUninstallReceiver() {
+        uninstallReceiver?.let {
+            try {
+                context.unregisterReceiver(it)
+                Log.d(TAG, "Receiver deregistrado")
+            } catch (e: Exception) {
+                // Ya estaba deregistrado
+            }
+        }
+        uninstallReceiver = null
+    }
+
     fun dismissApkDialog() {
+        unregisterUninstallReceiver()
+        pendingInstallPackage = null
         _uiState.update {
-            it.copy(showApkDialog = false, apkRemotePath = null, downloadedApkFile = null)
+            it.copy(showApkDialog = false, apkRemotePath = null, downloadedApkFile = null, isWaitingUninstall = false)
         }
     }
 
@@ -343,6 +452,8 @@ class TerminalViewModel @Inject constructor(
 
     override fun onCleared() {
         super.onCleared()
+        buildMonitorJob?.cancel()
+        unregisterUninstallReceiver()
         bridge.cleanup()
         sshManager.disconnect()
         stopForegroundService()
