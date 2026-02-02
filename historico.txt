@@ -1,5 +1,5 @@
 # HISTORICO DE ANÁLISIS - RunPod Manager
-# Última actualización: 2026-02-02
+# Última actualización: 2026-02-02 (v2 - Refactor)
 # ============================================================
 # Este archivo documenta la funcionalidad de la app para futuras sesiones de Claude Code.
 # NO es un log de commits, sino una referencia de QUÉ hace cada parte de la app.
@@ -102,7 +102,7 @@ com.example.runpodmanager/
 │   ├── components/
 │   │   ├── PodCard.kt
 │   │   ├── StatusChip.kt
-│   │   └── LoadingOverlay.kt
+│   │   └── BuildOverlays.kt       (BuildProgressOverlay, BuildResultOverlay)
 │   └── theme/
 │       └── Theme.kt
 ├── di/
@@ -404,6 +404,49 @@ fi
 7. Usuario presiona Install → descarga APK + lanza instalador
 8. BroadcastReceiver detecta instalación → actualiza UI
 9. Botón Uninstall aparece para desinstalar si necesario
+
+---
+
+## 18. REFACTORIZACIÓN DE CÓDIGO (2026-02-02)
+
+### 18.1 Nuevos Componentes Extraídos
+
+**BuildOverlays.kt** (ui/components/):
+- `BuildProgressOverlay`: Muestra estado de carga durante build o descarga APK
+- `BuildResultOverlay`: Muestra resultado éxito/fallo después de build
+- Reemplaza código inline duplicado en TerminalScreen
+
+### 18.2 Componentes Eliminados
+
+- `LoadingOverlay.kt`: Eliminado por no usarse en ninguna parte del proyecto
+
+### 18.3 Simplificaciones en TerminalViewModel.kt
+
+Funciones helper extraídas:
+- `isPackageInstalled(packageName)`: Verifica si un paquete está instalado
+- `resetProjectState()`: Reinicia estados de proyecto (appPackageName, isAppInstalled, isApkAvailable, buildSuccess)
+
+### 18.4 Simplificaciones en TerminalScreen.kt
+
+Componentes extraídos:
+- `ProjectsBarColors`: Objeto con constantes de color para la barra de proyectos
+- `ActionButton`: Composable reutilizable para botones de acción (Build, Install, Uninstall)
+- `InstallStatusLabel`: Composable para mostrar estado de instalación
+- `SelectedProjectView`: Vista cuando hay proyecto seleccionado
+- `ProjectListView`: Vista del dropdown de selección de proyectos
+
+### 18.5 Simplificaciones en PodCard.kt
+
+Funciones helper:
+- `isSshAvailable`: Variable que evita repetir condición de disponibilidad SSH
+- `buildSshCommand()`: Construye comando SSH para conexión
+- `buildPodDisplayName()`: Construye nombre de visualización del pod
+
+### 18.6 Limpieza en GpuType.kt
+
+Código eliminado por no usarse:
+- `PodTemplate` data class
+- Listas `commonImages` y `cpuImages`
 
 ---
 
