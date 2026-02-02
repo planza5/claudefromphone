@@ -1,5 +1,5 @@
 # HISTORICO DE ANÁLISIS - RunPod Manager
-# Última actualización: 2026-02-02
+# Última actualización: 2026-02-02 (Sesión 2: Barra de Proyectos)
 # ============================================================
 
 ## RESUMEN EJECUTIVO
@@ -293,6 +293,54 @@ ac384fb chore: Remove private key from repository
 - Los pods se crean con script de inicio que configura SSH keys automáticamente
 - Entrada por voz integrada para comandos en terminal
 - El servicio en primer plano mantiene la conexión SSH activa en background
+
+---
+
+## 16. CAMBIOS SESIÓN 2026-02-02 (Barra de Proyectos)
+
+### Funcionalidades implementadas en ProjectsBar:
+
+#### Botón Uninstall
+- Abre Settings > App Info para desinstalar (evita restricciones de ROMs como Oppo/OnePlus)
+- Solo visible cuando `isAppInstalled == true`
+- Usa `ACTION_APPLICATION_DETAILS_SETTINGS` con URI `package:{packageName}`
+
+#### Botón Install
+- Descarga APK vía SFTP desde `{project}/app/build/outputs/apk/debug/app-debug.apk`
+- Guarda en `context.cacheDir/apks/app-debug.apk`
+- Usa FileProvider para compartir el archivo
+- Lanza instalador con `ACTION_VIEW` + MIME `application/vnd.android.package-archive`
+- Muestra indicador circular de progreso con porcentaje durante descarga
+- Solo visible cuando `isApkAvailable == true`
+
+#### Botón Build
+- Ejecuta `/workspace/compilar.sh {project}` vía `sshManager.executeCommand()`
+- Muestra spinner mientras compila
+- Captura código de salida (0=éxito, 1=error)
+- Después de build exitoso, verifica si APK existe
+
+#### BroadcastReceiver para detección de instalación/desinstalación
+- Escucha: ACTION_PACKAGE_ADDED, ACTION_PACKAGE_REPLACED, ACTION_PACKAGE_REMOVED
+- Actualiza `isAppInstalled` automáticamente
+- Registrado en init(), desregistrado en onCleared()
+- Compatible con Android 13+ (usa RECEIVER_NOT_EXPORTED)
+
+### Estados agregados a TerminalUiState:
+- `isApkAvailable: Boolean?` - null=checking, true/false=resultado
+- `isBuilding: Boolean` - indica si está compilando
+- `isDownloadingApk: Boolean` - indica si está descargando APK
+- `downloadProgress: Float` - progreso de descarga (0.0 a 1.0)
+
+### Script compilar.sh (en pod /workspace/compilar.sh):
+- Recibe directorio del proyecto como argumento
+- Ejecuta `./gradlew assembleDebug --no-daemon`
+- Retorna `exit 0` en éxito, `exit 1` en error
+- Verifica existencia de gradlew y APK generado
+
+### Archivos modificados:
+- TerminalViewModel.kt - lógica de Build/Install/Uninstall, BroadcastReceiver
+- TerminalScreen.kt - UI de ProjectsBar con indicadores de progreso
+- compilar.sh - agregado `exit 0` al final
 
 ---
 

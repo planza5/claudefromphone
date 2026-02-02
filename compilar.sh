@@ -59,3 +59,5 @@ echo -e "${GREEN}=========================================="
 echo -e "  BUILD SUCCESSFUL"
 echo -e "  APK: $APK_PATH"
 echo -e "==========================================${NC}"
+
+exit 0

@@ -6,8 +6,10 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.net.Uri
 import android.os.Build
+import android.util.Log
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
+import java.io.File
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -21,11 +23,8 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import android.util.Log
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import android.widget.Toast
-import java.io.File
 import javax.inject.Inject
 
 private const val TAG = "TerminalViewModel"
@@ -41,18 +40,13 @@ data class TerminalUiState(
     val projects: List<String> = emptyList(),
     val isLoadingProjects: Boolean = false,
     val selectedProject: String? = null,
+    val appPackageName: String? = null,
+    val isAppInstalled: Boolean? = null, // null = checking, true/false = result
+    val isApkAvailable: Boolean? = null, // null = checking, true/false = result
     val isBuilding: Boolean = false,
-    // APK download states
-    val apkRemotePath: String? = null,
-    val showApkDialog: Boolean = false,
     val isDownloadingApk: Boolean = false,
     val downloadProgress: Float = 0f,
-    val downloadedApkFile: File? = null,
-    // Auto build-download-install flow
-    val buildStatus: String = "",
-    val isAutoInstalling: Boolean = false,
-    val isWaitingUninstall: Boolean = false,
-    val isWaitingInstall: Boolean = false
+    val buildSuccess: Boolean? = null // null = no result, true = success, false = error
 )
 
 @HiltViewModel
@@ -73,24 +67,59 @@ class TerminalViewModel @Inject constructor(
     private val host: String = savedStateHandle.get<String>("host") ?: ""
     private val port: Int = savedStateHandle.get<Int>("port") ?: 22
 
-    // Para auto-instalar después de desinstalar
-    private var pendingInstallPackage: String? = null
-    private var uninstallReceiver: BroadcastReceiver? = null
-    private var installReceiver: BroadcastReceiver? = null
+    // BroadcastReceiver para detectar instalación/desinstalación de apps
+    private val packageReceiver = object : BroadcastReceiver() {
+        override fun onReceive(ctx: Context?, intent: Intent?) {
+            val packageName = intent?.data?.schemeSpecificPart
+            val currentPackage = _uiState.value.appPackageName
 
-    // Para desinstalar desde el botón de la barra
-    private var pendingUninstallOnly: String? = null
-    private var uninstallOnlyReceiver: BroadcastReceiver? = null
-
-    // Job para monitorear el build
-    private var buildMonitorJob: kotlinx.coroutines.Job? = null
+            when (intent?.action) {
+                Intent.ACTION_PACKAGE_ADDED, Intent.ACTION_PACKAGE_REPLACED -> {
+                    Log.d(TAG, "Package installed/updated: $packageName, esperando: $currentPackage")
+                    if (packageName != null && packageName == currentPackage) {
+                        Log.d(TAG, "App '$packageName' instalada correctamente")
+                        _uiState.update { it.copy(isAppInstalled = true) }
+                    }
+                }
+                Intent.ACTION_PACKAGE_REMOVED -> {
+                    Log.d(TAG, "Package removed: $packageName, esperando: $currentPackage")
+                    if (packageName != null && packageName == currentPackage) {
+                        // Verificar que realmente se desinstaló
+                        val isStillInstalled = try {
+                            context.packageManager.getPackageInfo(packageName, 0)
+                            true
+                        } catch (e: Exception) {
+                            false
+                        }
+                        Log.d(TAG, "App '$packageName' todavía instalada: $isStillInstalled")
+                        _uiState.update { it.copy(isAppInstalled = isStillInstalled) }
+                    }
+                }
+            }
+        }
+    }
 
     init {
         _uiState.update { it.copy(host = host, port = port) }
         observeConnectionState()
+        registerPackageReceiver()
 
         if (host.isNotEmpty() && port > 0) {
             connect()
+        }
+    }
+
+    private fun registerPackageReceiver() {
+        val filter = IntentFilter().apply {
+            addAction(Intent.ACTION_PACKAGE_ADDED)
+            addAction(Intent.ACTION_PACKAGE_REPLACED)
+            addAction(Intent.ACTION_PACKAGE_REMOVED)
+            addDataScheme("package")
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            context.registerReceiver(packageReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+        } else {
+            context.registerReceiver(packageReceiver, filter)
         }
     }
 
@@ -212,329 +241,268 @@ class TerminalViewModel @Inject constructor(
     fun selectProject(project: String) {
         viewModelScope.launch {
             sshManager.sendCommand("cd $project\n")
-            _uiState.update { it.copy(selectedProject = project) }
+            _uiState.update {
+                it.copy(
+                    selectedProject = project,
+                    appPackageName = null,
+                    isAppInstalled = null,
+                    isApkAvailable = null
+                )
+            }
+            checkAppInstallStatus(project)
+            checkApkAvailable(project)
+        }
+    }
+
+    private fun checkAppInstallStatus(project: String) {
+        viewModelScope.launch {
+            // Buscar applicationId o namespace en build.gradle/build.gradle.kts
+            val command = """
+                # Primero buscar applicationId
+                APP_ID=$(grep -rh "applicationId" $project/app/build.gradle* 2>/dev/null | grep -v '//' | head -1 | sed 's/.*["'"'"']\([^"'"'"']*\)["'"'"'].*/\1/')
+                if [ -n "${'$'}APP_ID" ]; then
+                    echo "${'$'}APP_ID"
+                    exit 0
+                fi
+                # Si no hay applicationId, buscar namespace
+                NS=$(grep -rh "namespace" $project/app/build.gradle* 2>/dev/null | grep -v '//' | head -1 | sed 's/.*["'"'"']\([^"'"'"']*\)["'"'"'].*/\1/')
+                if [ -n "${'$'}NS" ]; then
+                    echo "${'$'}NS"
+                    exit 0
+                fi
+                # Fallback: buscar en AndroidManifest.xml
+                grep -h "package=" $project/app/src/main/AndroidManifest.xml 2>/dev/null | sed 's/.*package=["'"'"']\([^"'"'"']*\)["'"'"'].*/\1/'
+            """.trimIndent()
+
+            sshManager.executeCommand(command).onSuccess { result ->
+                // Limpiar el package: quitar espacios, newlines, y caracteres no válidos
+                val cleanPackage = result.trim()
+                    .lines()
+                    .lastOrNull { it.contains(".") }
+                    ?.trim()
+                    ?.replace(Regex("[^a-zA-Z0-9._]"), "") // Solo caracteres válidos para package
+                    ?: ""
+
+                Log.d(TAG, "Package raw: '${result.take(100)}', limpio: '$cleanPackage', bytes: ${cleanPackage.toByteArray().contentToString()}")
+
+                if (cleanPackage.isNotBlank() && cleanPackage.contains(".")) {
+                    _uiState.update { it.copy(appPackageName = cleanPackage) }
+
+                    // Verificar si está instalada
+                    val isInstalled = try {
+                        context.packageManager.getPackageInfo(cleanPackage, 0)
+                        true
+                    } catch (e: Exception) {
+                        Log.d(TAG, "Package '$cleanPackage' no instalado. Exception: ${e.javaClass.simpleName}")
+                        false
+                    }
+                    Log.d(TAG, "App '$cleanPackage' instalada: $isInstalled")
+                    _uiState.update { it.copy(isAppInstalled = isInstalled) }
+                } else {
+                    Log.w(TAG, "No se encontró package válido para $project")
+                    _uiState.update { it.copy(isAppInstalled = null) }
+                }
+            }.onFailure { e ->
+                Log.e(TAG, "Error buscando package: ${e.message}")
+                _uiState.update { it.copy(isAppInstalled = null) }
+            }
+        }
+    }
+
+    fun refreshInstallStatus() {
+        val project = _uiState.value.selectedProject ?: return
+        _uiState.update { it.copy(isAppInstalled = null) }
+        checkAppInstallStatus(project)
+    }
+
+    private fun checkApkAvailable(project: String) {
+        viewModelScope.launch {
+            val apkPath = "$project/app/build/outputs/apk/debug/app-debug.apk"
+            val command = "test -f $apkPath && echo 'EXISTS' || echo 'NOT_FOUND'"
+
+            sshManager.executeCommand(command).onSuccess { result ->
+                val exists = result.trim() == "EXISTS"
+                Log.d(TAG, "APK $apkPath existe: $exists")
+                _uiState.update { it.copy(isApkAvailable = exists) }
+            }.onFailure { e ->
+                Log.e(TAG, "Error verificando APK: ${e.message}")
+                _uiState.update { it.copy(isApkAvailable = false) }
+            }
         }
     }
 
     fun goBackFromProject() {
-        _uiState.update { it.copy(selectedProject = null) }
-    }
-
-    fun buildAndInstall() {
-        val project = _uiState.value.selectedProject ?: return
-        viewModelScope.launch {
-            _uiState.update {
-                it.copy(
-                    isBuilding = true,
-                    isAutoInstalling = true,
-                    buildStatus = "Compilando..."
-                )
-            }
-            sshManager.sendCommand("/workspace/compilar.sh $project\n")
-            // Monitorear la salida para detectar BUILD SUCCESSFUL
-            monitorBuildOutput(project)
-        }
-    }
-
-    private fun monitorBuildOutput(project: String) {
-        // Cancelar monitor anterior si existe
-        buildMonitorJob?.cancel()
-
-        buildMonitorJob = viewModelScope.launch {
-            val outputBuffer = StringBuilder()
-            sshManager.rawOutput.collect { bytes ->
-                val text = String(bytes, Charsets.UTF_8)
-                outputBuffer.append(text)
-
-                // Detectar BUILD SUCCESSFUL
-                if (outputBuffer.contains("BUILD SUCCESSFUL") && _uiState.value.isBuilding) {
-                    Log.d(TAG, "Build exitoso detectado, buscando APK...")
-                    _uiState.update { it.copy(isBuilding = false) }
-                    findGeneratedApk(project)
-                    buildMonitorJob?.cancel()
-                    return@collect
-                }
-
-                // Detectar BUILD FAILED
-                if (outputBuffer.contains("BUILD FAILED") && _uiState.value.isBuilding) {
-                    Log.d(TAG, "Build fallido detectado")
-                    _uiState.update { it.copy(isBuilding = false) }
-                    buildMonitorJob?.cancel()
-                    return@collect
-                }
-
-                // Limpiar buffer si se hace muy grande
-                if (outputBuffer.length > 50000) {
-                    outputBuffer.delete(0, outputBuffer.length - 10000)
-                }
-            }
-        }
-    }
-
-    private fun findGeneratedApk(project: String) {
-        viewModelScope.launch {
-            val command = """find $project -name "*.apk" -path "*/build/outputs/*" -type f 2>/dev/null | head -1"""
-            sshManager.executeCommand(command).onSuccess { apkPath ->
-                if (apkPath.isNotBlank()) {
-                    Log.d(TAG, "APK encontrado: $apkPath")
-                    _uiState.update {
-                        it.copy(apkRemotePath = apkPath, showApkDialog = true)
-                    }
-                } else {
-                    Log.d(TAG, "No se encontró APK")
-                }
-            }.onFailure { e ->
-                Log.e(TAG, "Error buscando APK: ${e.message}")
-            }
-        }
-    }
-
-    fun downloadApk() {
-        val remotePath = _uiState.value.apkRemotePath ?: return
-        viewModelScope.launch {
-            _uiState.update { it.copy(isDownloadingApk = true, downloadProgress = 0f) }
-
-            val apkDir = File(context.cacheDir, "apks")
-            apkDir.mkdirs()
-            val localFile = File(apkDir, "downloaded_${System.currentTimeMillis()}.apk")
-
-            sshManager.downloadFile(
-                remotePath = remotePath,
-                localFile = localFile,
-                onProgress = { progress ->
-                    _uiState.update { it.copy(downloadProgress = progress) }
-                }
-            ).onSuccess {
-                Log.d(TAG, "APK descargado: ${localFile.absolutePath}")
-                _uiState.update {
-                    it.copy(
-                        isDownloadingApk = false,
-                        downloadedApkFile = localFile,
-                        showApkDialog = true
-                    )
-                }
-            }.onFailure { e ->
-                Log.e(TAG, "Error descargando APK: ${e.message}")
-                _uiState.update {
-                    it.copy(
-                        isDownloadingApk = false,
-                        errorMessage = "Error descargando APK: ${e.message}"
-                    )
-                }
-            }
-        }
-    }
-
-    fun installApk() {
-        val apkFile = _uiState.value.downloadedApkFile ?: return
-        try {
-            // Obtener package name para registrar el receiver
-            val packageInfo = context.packageManager.getPackageArchiveInfo(apkFile.absolutePath, 0)
-            val packageName = packageInfo?.packageName
-
-            if (packageName != null) {
-                pendingInstallPackage = packageName
-                registerInstallReceiver(packageName)
-                _uiState.update { it.copy(isWaitingInstall = true) }
-            }
-
-            val uri = FileProvider.getUriForFile(
-                context,
-                "${context.packageName}.fileprovider",
-                apkFile
+        _uiState.update {
+            it.copy(
+                selectedProject = null,
+                appPackageName = null,
+                isAppInstalled = null,
+                isApkAvailable = null
             )
-            val intent = Intent(Intent.ACTION_VIEW).apply {
-                setDataAndType(uri, "application/vnd.android.package-archive")
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION
-            }
-            context.startActivity(intent)
-        } catch (e: Exception) {
-            Log.e(TAG, "Error instalando APK: ${e.message}")
-            _uiState.update { it.copy(errorMessage = "Error instalando APK: ${e.message}", isWaitingInstall = false) }
         }
     }
 
-    fun uninstallAndInstallApk() {
-        Log.d(TAG, "uninstallAndInstallApk() llamado")
-        val apkFile = _uiState.value.downloadedApkFile
-        if (apkFile == null) {
-            Log.e(TAG, "downloadedApkFile es null!")
-            return
-        }
-        try {
-            // Obtener package name del APK
-            val packageInfo = context.packageManager.getPackageArchiveInfo(apkFile.absolutePath, 0)
-            val packageName = packageInfo?.packageName
-            Log.d(TAG, "Package name del APK: $packageName")
+    fun deleteApk() {
+        val project = _uiState.value.selectedProject ?: return
+        val apkPath = "$project/app/build/outputs/apk/debug/app-debug.apk"
 
-            if (packageName != null) {
-                // Verificar si la app está instalada
-                val isInstalled = try {
-                    context.packageManager.getPackageInfo(packageName, 0)
-                    true
-                } catch (e: Exception) {
-                    false
-                }
-                Log.d(TAG, "App instalada: $isInstalled")
-
-                if (!isInstalled) {
-                    // No está instalada, instalar directamente con tracking
-                    Log.d(TAG, "App no instalada, instalando directamente...")
-                    pendingInstallPackage = packageName
-                    registerInstallReceiver(packageName)
-                    _uiState.update { it.copy(isWaitingInstall = true) }
-                    installApkInternal()
-                    return
-                }
-
-                // Guardar el package que esperamos que se desinstale
-                pendingInstallPackage = packageName
-
-                // Registrar receiver para detectar cuando se desinstala
-                registerUninstallReceiver(packageName)
-
-                // Mostrar estado de espera
-                _uiState.update { it.copy(isWaitingUninstall = true) }
-
-                // Lanzar desinstalación
-                Log.d(TAG, "Lanzando intent de desinstalación para $packageName")
-                val uninstallIntent = Intent(Intent.ACTION_DELETE).apply {
-                    data = Uri.parse("package:$packageName")
-                    flags = Intent.FLAG_ACTIVITY_NEW_TASK
-                }
-                context.startActivity(uninstallIntent)
-            } else {
-                _uiState.update { it.copy(errorMessage = "No se pudo obtener el package name del APK") }
+        viewModelScope.launch {
+            Log.d(TAG, "Borrando APK: $apkPath")
+            sshManager.executeCommand("rm -f $apkPath").onSuccess {
+                Log.d(TAG, "APK borrado correctamente")
+                _uiState.update { it.copy(isApkAvailable = false) }
+            }.onFailure { e ->
+                Log.e(TAG, "Error borrando APK: ${e.message}", e)
+                _uiState.update { it.copy(errorMessage = "Error borrando APK: ${e.message}") }
             }
-        } catch (e: Exception) {
-            Log.e(TAG, "Error desinstalando: ${e.message}")
-            _uiState.update { it.copy(errorMessage = "Error: ${e.message}") }
         }
     }
 
-    private fun registerUninstallReceiver(packageName: String) {
-        // Deregistrar receiver anterior si existe
-        unregisterUninstallReceiver()
+    fun buildProject() {
+        val project = _uiState.value.selectedProject ?: return
 
-        uninstallReceiver = object : BroadcastReceiver() {
-            override fun onReceive(ctx: Context?, intent: Intent?) {
-                val removedPackage = intent?.data?.schemeSpecificPart
-                Log.d(TAG, "Package removed: $removedPackage, esperando: $pendingInstallPackage")
+        viewModelScope.launch {
+            _uiState.update { it.copy(isBuilding = true, isApkAvailable = null, buildSuccess = null) }
 
-                if (removedPackage == pendingInstallPackage) {
-                    Log.d(TAG, "Desinstalación detectada, preparando instalación...")
-                    unregisterUninstallReceiver()
+            val command = "/workspace/compilar.sh $project; echo \"EXIT_CODE:\$?\""
+            Log.d(TAG, "Ejecutando build: $command")
 
-                    // Registrar receiver para detectar cuando se instale
-                    registerInstallReceiver(pendingInstallPackage!!)
+            sshManager.executeCommand(command).onSuccess { output ->
+                Log.d(TAG, "Build output: $output")
 
-                    // Cambiar estado a "esperando instalación"
-                    _uiState.update { it.copy(isWaitingUninstall = false, isWaitingInstall = true) }
+                // Extraer código de salida
+                val exitCode = output.lines()
+                    .lastOrNull { it.startsWith("EXIT_CODE:") }
+                    ?.substringAfter("EXIT_CODE:")
+                    ?.trim()
+                    ?.toIntOrNull() ?: -1
 
-                    // Instalar el APK automáticamente
-                    installApkInternal()
-                }
-            }
-        }
+                Log.d(TAG, "Build exit code: $exitCode")
 
-        val filter = IntentFilter(Intent.ACTION_PACKAGE_REMOVED).apply {
-            addDataScheme("package")
-        }
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            context.registerReceiver(uninstallReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
-        } else {
-            context.registerReceiver(uninstallReceiver, filter)
-        }
-        Log.d(TAG, "Receiver registrado para detectar desinstalación de $packageName")
-    }
-
-    private fun registerInstallReceiver(packageName: String) {
-        unregisterInstallReceiver()
-
-        installReceiver = object : BroadcastReceiver() {
-            override fun onReceive(ctx: Context?, intent: Intent?) {
-                val addedPackage = intent?.data?.schemeSpecificPart
-                Log.d(TAG, "Package added: $addedPackage, esperando: $packageName")
-
-                if (addedPackage == packageName) {
-                    Log.d(TAG, "Instalación detectada, cerrando diálogo")
-                    pendingInstallPackage = null
-                    unregisterInstallReceiver()
+                if (exitCode == 0) {
+                    // Build exitoso
+                    _uiState.update { it.copy(isBuilding = false, buildSuccess = true) }
+                    checkApkAvailable(project)
+                } else {
+                    // Build fallido
                     _uiState.update {
                         it.copy(
-                            isWaitingInstall = false,
-                            showApkDialog = false,
-                            apkRemotePath = null,
-                            downloadedApkFile = null
+                            isBuilding = false,
+                            buildSuccess = false,
+                            errorMessage = "Build failed (exit code: $exitCode)"
                         )
                     }
                 }
+            }.onFailure { e ->
+                Log.e(TAG, "Error ejecutando build: ${e.message}", e)
+                _uiState.update {
+                    it.copy(
+                        isBuilding = false,
+                        buildSuccess = false,
+                        errorMessage = "Build error: ${e.message}"
+                    )
+                }
             }
         }
-
-        val filter = IntentFilter(Intent.ACTION_PACKAGE_ADDED).apply {
-            addDataScheme("package")
-        }
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            context.registerReceiver(installReceiver, filter, Context.RECEIVER_EXPORTED)
-        } else {
-            context.registerReceiver(installReceiver, filter)
-        }
-        Log.d(TAG, "Receiver registrado para detectar instalación de $packageName")
     }
 
-    private fun unregisterInstallReceiver() {
-        installReceiver?.let {
+    fun clearBuildResult() {
+        _uiState.update { it.copy(buildSuccess = null) }
+    }
+
+    fun installApk() {
+        val project = _uiState.value.selectedProject ?: return
+        val apkPath = "$project/app/build/outputs/apk/debug/app-debug.apk"
+
+        viewModelScope.launch {
+            _uiState.update { it.copy(isDownloadingApk = true, downloadProgress = 0f) }
+
             try {
-                context.unregisterReceiver(it)
-                Log.d(TAG, "Install receiver deregistrado")
+                // Crear directorio local para APKs
+                val apksDir = File(context.cacheDir, "apks")
+                apksDir.mkdirs()
+                val localApk = File(apksDir, "app-debug.apk")
+
+                Log.d(TAG, "Descargando APK: $apkPath -> ${localApk.absolutePath}")
+
+                // Descargar el APK
+                val result = sshManager.downloadFile(
+                    remotePath = apkPath,
+                    localFile = localApk,
+                    onProgress = { progress ->
+                        _uiState.update { it.copy(downloadProgress = progress) }
+                    }
+                )
+
+                result.onSuccess {
+                    Log.d(TAG, "APK descargado correctamente")
+                    _uiState.update { it.copy(isDownloadingApk = false) }
+
+                    // Instalar el APK
+                    launchApkInstall(localApk)
+                }.onFailure { e ->
+                    Log.e(TAG, "Error descargando APK: ${e.message}", e)
+                    _uiState.update {
+                        it.copy(
+                            isDownloadingApk = false,
+                            errorMessage = "Error descargando APK: ${e.message}"
+                        )
+                    }
+                }
             } catch (e: Exception) {
-                // Ya estaba deregistrado
+                Log.e(TAG, "Error en installApk: ${e.message}", e)
+                _uiState.update {
+                    it.copy(
+                        isDownloadingApk = false,
+                        errorMessage = "Error: ${e.message}"
+                    )
+                }
             }
         }
-        installReceiver = null
     }
 
-    // Versión interna que no cierra el diálogo
-    private fun installApkInternal() {
-        val apkFile = _uiState.value.downloadedApkFile ?: return
+    private fun launchApkInstall(apkFile: File) {
         try {
             val uri = FileProvider.getUriForFile(
                 context,
                 "${context.packageName}.fileprovider",
                 apkFile
             )
+
             val intent = Intent(Intent.ACTION_VIEW).apply {
                 setDataAndType(uri, "application/vnd.android.package-archive")
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+
+            context.startActivity(intent)
+            Log.d(TAG, "Intent de instalación lanzado")
+        } catch (e: Exception) {
+            Log.e(TAG, "Error lanzando instalación: ${e.message}", e)
+            _uiState.update { it.copy(errorMessage = "Error abriendo instalador: ${e.message}") }
+        }
+    }
+
+    fun uninstallApp() {
+        Log.e(TAG, "uninstallApp() llamado")
+        val packageName = _uiState.value.appPackageName
+        Log.e(TAG, "appPackageName = $packageName")
+        if (packageName.isNullOrBlank()) {
+            Log.e(TAG, "No hay package para desinstalar")
+            return
+        }
+
+        Log.e(TAG, "Abriendo Settings para desinstalar: $packageName")
+        try {
+            val uri = Uri.parse("package:$packageName")
+            // Abrir directamente la página de la app en Settings
+            val intent = Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS, uri).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
             context.startActivity(intent)
+            Log.e(TAG, "Settings abierto")
         } catch (e: Exception) {
-            Log.e(TAG, "Error instalando APK: ${e.message}")
-            _uiState.update { it.copy(errorMessage = "Error instalando APK: ${e.message}", isWaitingInstall = false) }
-        }
-    }
-
-    private fun unregisterUninstallReceiver() {
-        uninstallReceiver?.let {
-            try {
-                context.unregisterReceiver(it)
-                Log.d(TAG, "Receiver deregistrado")
-            } catch (e: Exception) {
-                // Ya estaba deregistrado
-            }
-        }
-        uninstallReceiver = null
-    }
-
-    fun dismissApkDialog() {
-        unregisterUninstallReceiver()
-        unregisterInstallReceiver()
-        pendingInstallPackage = null
-        _uiState.update {
-            it.copy(showApkDialog = false, apkRemotePath = null, downloadedApkFile = null, isWaitingUninstall = false, isWaitingInstall = false)
+            Log.e(TAG, "Error al abrir Settings", e)
         }
     }
 
@@ -542,112 +510,13 @@ class TerminalViewModel @Inject constructor(
         _uiState.update { it.copy(errorMessage = null) }
     }
 
-    fun uninstallApp() {
-        val project = _uiState.value.selectedProject ?: return
-
-        viewModelScope.launch {
-            // Buscar el APK más reciente del proyecto
-            val command = """find $project -name "*.apk" -path "*/build/outputs/*" -type f 2>/dev/null | head -1"""
-            sshManager.executeCommand(command).onSuccess { apkPath ->
-                if (apkPath.isBlank()) {
-                    Toast.makeText(context, "No se encontró APK del proyecto", Toast.LENGTH_SHORT).show()
-                    return@onSuccess
-                }
-
-                // Descargar el APK temporalmente para obtener el package name
-                val apkDir = File(context.cacheDir, "apks")
-                apkDir.mkdirs()
-                val tempFile = File(apkDir, "temp_uninstall_${System.currentTimeMillis()}.apk")
-
-                sshManager.downloadFile(
-                    remotePath = apkPath.trim(),
-                    localFile = tempFile,
-                    onProgress = { }
-                ).onSuccess {
-                    val packageInfo = context.packageManager.getPackageArchiveInfo(tempFile.absolutePath, 0)
-                    val packageName = packageInfo?.packageName
-                    tempFile.delete()
-
-                    if (packageName == null) {
-                        Toast.makeText(context, "No se pudo obtener el package name", Toast.LENGTH_SHORT).show()
-                        return@onSuccess
-                    }
-
-                    // Verificar si está instalada
-                    val isInstalled = try {
-                        context.packageManager.getPackageInfo(packageName, 0)
-                        true
-                    } catch (e: Exception) {
-                        false
-                    }
-
-                    if (!isInstalled) {
-                        Toast.makeText(context, "La app no está instalada", Toast.LENGTH_SHORT).show()
-                        return@onSuccess
-                    }
-
-                    // Registrar receiver para detectar desinstalación y mostrar toast
-                    registerUninstallOnlyReceiver(packageName)
-
-                    // Lanzar intent de desinstalación
-                    val uninstallIntent = Intent(Intent.ACTION_DELETE).apply {
-                        data = Uri.parse("package:$packageName")
-                        flags = Intent.FLAG_ACTIVITY_NEW_TASK
-                    }
-                    context.startActivity(uninstallIntent)
-
-                }.onFailure { e ->
-                    Log.e(TAG, "Error descargando APK para obtener package: ${e.message}")
-                    Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
-                }
-            }.onFailure { e ->
-                Toast.makeText(context, "Error buscando APK: ${e.message}", Toast.LENGTH_SHORT).show()
-            }
-        }
-    }
-
-    private fun registerUninstallOnlyReceiver(packageName: String) {
-        unregisterUninstallOnlyReceiver()
-        pendingUninstallOnly = packageName
-
-        uninstallOnlyReceiver = object : BroadcastReceiver() {
-            override fun onReceive(ctx: Context?, intent: Intent?) {
-                val removedPackage = intent?.data?.schemeSpecificPart
-                if (removedPackage == pendingUninstallOnly) {
-                    Log.d(TAG, "App desinstalada: $removedPackage")
-                    Toast.makeText(context, "App desinstalada correctamente", Toast.LENGTH_SHORT).show()
-                    pendingUninstallOnly = null
-                    unregisterUninstallOnlyReceiver()
-                }
-            }
-        }
-
-        val filter = IntentFilter(Intent.ACTION_PACKAGE_REMOVED).apply {
-            addDataScheme("package")
-        }
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            context.registerReceiver(uninstallOnlyReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
-        } else {
-            context.registerReceiver(uninstallOnlyReceiver, filter)
-        }
-    }
-
-    private fun unregisterUninstallOnlyReceiver() {
-        uninstallOnlyReceiver?.let {
-            try {
-                context.unregisterReceiver(it)
-            } catch (e: Exception) { }
-        }
-        uninstallOnlyReceiver = null
-    }
-
     override fun onCleared() {
         super.onCleared()
-        buildMonitorJob?.cancel()
-        unregisterUninstallReceiver()
-        unregisterInstallReceiver()
-        unregisterUninstallOnlyReceiver()
+        try {
+            context.unregisterReceiver(packageReceiver)
+        } catch (e: Exception) {
+            Log.w(TAG, "Error unregistering receiver: ${e.message}")
+        }
         bridge.cleanup()
         sshManager.disconnect()
         stopForegroundService()
