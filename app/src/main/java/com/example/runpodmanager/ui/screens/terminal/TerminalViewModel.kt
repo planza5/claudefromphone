@@ -46,7 +46,16 @@ data class TerminalUiState(
     val isBuilding: Boolean = false,
     val isDownloadingApk: Boolean = false,
     val downloadProgress: Float = 0f,
-    val buildSuccess: Boolean? = null // null = no result, true = success, false = error
+    val buildSuccess: Boolean? = null, // null = no result, true = success, false = error
+    // Diálogos de gestión de proyectos
+    val showCreateProjectDialog: Boolean = false,
+    val showRenameProjectDialog: Boolean = false,
+    val showDeleteProjectDialog: Boolean = false,
+    val projectToManage: String? = null,  // Proyecto a renombrar/eliminar
+    val newProjectName: String = "",       // Input del usuario
+    val isCreatingProject: Boolean = false,
+    val isDeletingProject: Boolean = false,
+    val isRenamingProject: Boolean = false
 )
 
 @HiltViewModel
@@ -180,7 +189,9 @@ class TerminalViewModel @Inject constructor(
             _uiState.update { it.copy(isLoadingProjects = true) }
             val command = """find /workspace/projects -type f \( -name "settings.gradle" -o -name "settings.gradle.kts" \) 2>/dev/null | while read f; do dirname "${'$'}f"; done | sort -u"""
             sshManager.executeCommand(command).onSuccess { output ->
-                val projects = output.lines().filter { it.isNotBlank() }
+                val projects = output.lines()
+                    .filter { it.isNotBlank() }
+                    .filter { !it.endsWith("/nodelete") }  // Filtrar template
                 _uiState.update { it.copy(projects = projects, isLoadingProjects = false) }
             }.onFailure {
                 _uiState.update { it.copy(isLoadingProjects = false) }
@@ -492,6 +503,102 @@ class TerminalViewModel @Inject constructor(
 
     fun clearError() {
         _uiState.update { it.copy(errorMessage = null) }
+    }
+
+    // === Gestión de proyectos ===
+
+    fun showCreateProjectDialog() {
+        _uiState.update { it.copy(showCreateProjectDialog = true, newProjectName = "") }
+    }
+
+    fun hideCreateProjectDialog() {
+        _uiState.update { it.copy(showCreateProjectDialog = false, newProjectName = "", isCreatingProject = false) }
+    }
+
+    fun showDeleteProjectDialog(project: String) {
+        _uiState.update { it.copy(showDeleteProjectDialog = true, projectToManage = project) }
+    }
+
+    fun hideDeleteProjectDialog() {
+        _uiState.update { it.copy(showDeleteProjectDialog = false, projectToManage = null, isDeletingProject = false) }
+    }
+
+    fun showRenameProjectDialog(project: String) {
+        val currentName = project.substringAfterLast("/")
+        _uiState.update { it.copy(showRenameProjectDialog = true, projectToManage = project, newProjectName = currentName) }
+    }
+
+    fun hideRenameProjectDialog() {
+        _uiState.update { it.copy(showRenameProjectDialog = false, projectToManage = null, newProjectName = "", isRenamingProject = false) }
+    }
+
+    fun updateNewProjectName(name: String) {
+        _uiState.update { it.copy(newProjectName = name) }
+    }
+
+    fun createProject() {
+        val name = _uiState.value.newProjectName.trim()
+        if (name.isBlank()) return
+
+        viewModelScope.launch {
+            _uiState.update { it.copy(isCreatingProject = true) }
+            val command = "cp -r /workspace/projects/nodelete /workspace/projects/$name"
+            sshManager.executeCommand(command).onSuccess {
+                loadProjects()
+                _uiState.update { it.copy(
+                    showCreateProjectDialog = false,
+                    newProjectName = "",
+                    isCreatingProject = false
+                )}
+            }.onFailure { e ->
+                Log.e(TAG, "Error creating project: ${e.message}")
+                _uiState.update { it.copy(isCreatingProject = false, errorMessage = "Error creating project: ${e.message}") }
+            }
+        }
+    }
+
+    fun deleteProject() {
+        val project = _uiState.value.projectToManage ?: return
+
+        viewModelScope.launch {
+            _uiState.update { it.copy(isDeletingProject = true) }
+            val command = "rm -rf $project"
+            sshManager.executeCommand(command).onSuccess {
+                // Si era el proyecto seleccionado, deseleccionar
+                if (_uiState.value.selectedProject == project) {
+                    _uiState.update { it.copy(selectedProject = null).resetProjectState() }
+                }
+                loadProjects()
+                hideDeleteProjectDialog()
+            }.onFailure { e ->
+                Log.e(TAG, "Error deleting project: ${e.message}")
+                _uiState.update { it.copy(isDeletingProject = false, errorMessage = "Error deleting project: ${e.message}") }
+            }
+        }
+    }
+
+    fun renameProject() {
+        val oldProject = _uiState.value.projectToManage ?: return
+        val newName = _uiState.value.newProjectName.trim()
+        if (newName.isBlank()) return
+
+        val newProject = "/workspace/projects/$newName"
+
+        viewModelScope.launch {
+            _uiState.update { it.copy(isRenamingProject = true) }
+            val command = "mv $oldProject $newProject"
+            sshManager.executeCommand(command).onSuccess {
+                // Si era el proyecto seleccionado, actualizar referencia
+                if (_uiState.value.selectedProject == oldProject) {
+                    _uiState.update { it.copy(selectedProject = newProject) }
+                }
+                loadProjects()
+                hideRenameProjectDialog()
+            }.onFailure { e ->
+                Log.e(TAG, "Error renaming project: ${e.message}")
+                _uiState.update { it.copy(isRenamingProject = false, errorMessage = "Error renaming project: ${e.message}") }
+            }
+        }
     }
 
     override fun onCleared() {

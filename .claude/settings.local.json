@@ -37,7 +37,20 @@
       "Bash(./gradlew clean:*)",
       "Bash(adb uninstall:*)",
       "Bash(./gradlew installDebug:*)",
-      "Bash(adb -s realme:37749 install:*)"
+      "Bash(adb -s realme:37749 install:*)",
+      "Bash(./gradlew :app:compileDebugKotlin:*)",
+      "Bash(./gradlew:*)",
+      "Bash(cmd //c build_and_install.bat)",
+      "Bash(powershell -c \"[console]::beep\\(1000,300\\)\")",
+      "Bash(C:ProjectsJavaAndroidStudio2runpodbuild_and_install.bat)",
+      "Bash(adb install:*)",
+      "Bash(cmd.exe /c \"cd /d C:\\\\Projects\\\\Java\\\\AndroidStudio2\\\\runpod && logcat.bat\")",
+      "Bash(cmd.exe /c \"cd /d C:\\\\Projects\\\\Java\\\\AndroidStudio2\\\\runpod && gradlew installDebug\")",
+      "Bash(powershell.exe -Command \"Set-Location ''C:\\\\Projects\\\\Java\\\\AndroidStudio2\\\\runpod''; .\\\\gradlew.bat installDebug\")",
+      "Bash(build_and_install.bat)",
+      "Bash(cmd.exe /c \"cd /d C:\\\\Projects\\\\Java\\\\AndroidStudio2\\\\runpod && gradlew.bat installDebug\")",
+      "Bash(./gradlew.bat:*)",
+      "Bash(powershell -Command:*)"
     ]
   }
 }

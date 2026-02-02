@@ -11,6 +11,7 @@ import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -29,23 +30,30 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Surface
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.LinkOff
 import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -61,6 +69,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -257,6 +266,10 @@ fun TerminalScreen(
             putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault())
             putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
             putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, false)
+            // Aumentar tiempos de espera para no cortar rápido
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 5000L)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 3000L)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 2000L)
         }
         try {
             speechRecognizer.startListening(intent)
@@ -443,7 +456,10 @@ fun TerminalScreen(
                             onDeleteApkClick = { viewModel.deleteApk() },
                             onBuildClick = { viewModel.buildProject() },
                             onInstallClick = { viewModel.installApk() },
-                            onUninstallClick = { viewModel.uninstallApp() }
+                            onUninstallClick = { viewModel.uninstallApp() },
+                            onCreateClick = { viewModel.showCreateProjectDialog() },
+                            onRenameClick = { project -> viewModel.showRenameProjectDialog(project) },
+                            onDeleteClick = { project -> viewModel.showDeleteProjectDialog(project) }
                         )
                     }
                 }
@@ -474,6 +490,100 @@ fun TerminalScreen(
                 buildSuccess = uiState.buildSuccess,
                 onDismiss = viewModel::clearBuildResult
             )
+
+            // Diálogo para crear proyecto
+            if (uiState.showCreateProjectDialog) {
+                AlertDialog(
+                    onDismissRequest = { viewModel.hideCreateProjectDialog() },
+                    title = { Text("Nuevo Proyecto") },
+                    text = {
+                        OutlinedTextField(
+                            value = uiState.newProjectName,
+                            onValueChange = { viewModel.updateNewProjectName(it) },
+                            label = { Text("Nombre del proyecto") },
+                            singleLine = true
+                        )
+                    },
+                    confirmButton = {
+                        TextButton(
+                            onClick = { viewModel.createProject() },
+                            enabled = !uiState.isCreatingProject && uiState.newProjectName.isNotBlank()
+                        ) {
+                            if (uiState.isCreatingProject) {
+                                CircularProgressIndicator(Modifier.size(16.dp))
+                            } else {
+                                Text("Crear")
+                            }
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { viewModel.hideCreateProjectDialog() }) {
+                            Text("Cancelar")
+                        }
+                    }
+                )
+            }
+
+            // Diálogo para renombrar proyecto
+            if (uiState.showRenameProjectDialog) {
+                AlertDialog(
+                    onDismissRequest = { viewModel.hideRenameProjectDialog() },
+                    title = { Text("Renombrar Proyecto") },
+                    text = {
+                        OutlinedTextField(
+                            value = uiState.newProjectName,
+                            onValueChange = { viewModel.updateNewProjectName(it) },
+                            label = { Text("Nuevo nombre") },
+                            singleLine = true
+                        )
+                    },
+                    confirmButton = {
+                        TextButton(
+                            onClick = { viewModel.renameProject() },
+                            enabled = !uiState.isRenamingProject && uiState.newProjectName.isNotBlank()
+                        ) {
+                            if (uiState.isRenamingProject) {
+                                CircularProgressIndicator(Modifier.size(16.dp))
+                            } else {
+                                Text("Renombrar")
+                            }
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { viewModel.hideRenameProjectDialog() }) {
+                            Text("Cancelar")
+                        }
+                    }
+                )
+            }
+
+            // Diálogo para confirmar eliminación
+            if (uiState.showDeleteProjectDialog) {
+                AlertDialog(
+                    onDismissRequest = { viewModel.hideDeleteProjectDialog() },
+                    title = { Text("Eliminar Proyecto") },
+                    text = {
+                        Text("¿Eliminar ${uiState.projectToManage?.substringAfterLast("/")}?\n\nEsta acción no se puede deshacer.")
+                    },
+                    confirmButton = {
+                        TextButton(
+                            onClick = { viewModel.deleteProject() },
+                            enabled = !uiState.isDeletingProject
+                        ) {
+                            if (uiState.isDeletingProject) {
+                                CircularProgressIndicator(Modifier.size(16.dp))
+                            } else {
+                                Text("Eliminar", color = Color.Red)
+                            }
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { viewModel.hideDeleteProjectDialog() }) {
+                            Text("Cancelar")
+                        }
+                    }
+                )
+            }
         }
     }
 }
@@ -555,7 +665,10 @@ fun ProjectsBar(
     onDeleteApkClick: () -> Unit,
     onBuildClick: () -> Unit,
     onInstallClick: () -> Unit,
-    onUninstallClick: () -> Unit
+    onUninstallClick: () -> Unit,
+    onCreateClick: () -> Unit,
+    onRenameClick: (String) -> Unit,
+    onDeleteClick: (String) -> Unit
 ) {
     if (projects.isEmpty() && !isLoading && selectedProject == null) return
 
@@ -577,7 +690,10 @@ fun ProjectsBar(
             ProjectListView(
                 projects = projects,
                 isLoading = isLoading,
-                onProjectClick = onProjectClick
+                onProjectClick = onProjectClick,
+                onCreateClick = onCreateClick,
+                onRenameClick = onRenameClick,
+                onDeleteClick = onDeleteClick
             )
         }
     }
@@ -706,7 +822,10 @@ private fun SelectedProjectView(
 private fun ProjectListView(
     projects: List<String>,
     isLoading: Boolean,
-    onProjectClick: (String) -> Unit
+    onProjectClick: (String) -> Unit,
+    onCreateClick: () -> Unit,
+    onRenameClick: (String) -> Unit,
+    onDeleteClick: (String) -> Unit
 ) {
     Row(
         modifier = Modifier
@@ -714,23 +833,83 @@ private fun ProjectListView(
             .padding(horizontal = 4.dp, vertical = 4.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
+        // Botón crear proyecto
+        Surface(
+            onClick = onCreateClick,
+            color = ProjectsBarColors.Accent,
+            shape = RoundedCornerShape(4.dp)
+        ) {
+            Icon(
+                Icons.Default.Add,
+                contentDescription = "Nuevo proyecto",
+                modifier = Modifier.padding(10.dp),
+                tint = Color.Black
+            )
+        }
+
         if (isLoading) {
             CircularProgressIndicator(Modifier.size(16.dp), ProjectsBarColors.Accent, strokeWidth = 2.dp)
             Text("Buscando proyectos...", color = Color.Gray, modifier = Modifier.padding(start = 8.dp))
         } else {
             projects.forEach { project ->
-                Surface(
-                    onClick = { onProjectClick(project) },
-                    color = ProjectsBarColors.Key,
-                    shape = RoundedCornerShape(4.dp)
-                ) {
-                    Text(
-                        project.substringAfterLast("/"),
-                        color = ProjectsBarColors.Text,
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)
-                    )
-                }
+                ProjectItem(
+                    project = project,
+                    onProjectClick = onProjectClick,
+                    onRenameClick = onRenameClick,
+                    onDeleteClick = onDeleteClick
+                )
             }
+        }
+    }
+}
+
+@Composable
+private fun ProjectItem(
+    project: String,
+    onProjectClick: (String) -> Unit,
+    onRenameClick: (String) -> Unit,
+    onDeleteClick: (String) -> Unit
+) {
+    var showMenu by remember { mutableStateOf(false) }
+
+    Box {
+        Surface(
+            color = ProjectsBarColors.Key,
+            shape = RoundedCornerShape(4.dp),
+            modifier = Modifier.pointerInput(project) {
+                detectTapGestures(
+                    onTap = { onProjectClick(project) },
+                    onLongPress = { showMenu = true }
+                )
+            }
+        ) {
+            Text(
+                project.substringAfterLast("/"),
+                color = ProjectsBarColors.Text,
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)
+            )
+        }
+
+        DropdownMenu(
+            expanded = showMenu,
+            onDismissRequest = { showMenu = false }
+        ) {
+            DropdownMenuItem(
+                text = { Text("Renombrar") },
+                onClick = {
+                    showMenu = false
+                    onRenameClick(project)
+                },
+                leadingIcon = { Icon(Icons.Default.Edit, null) }
+            )
+            DropdownMenuItem(
+                text = { Text("Eliminar", color = Color.Red) },
+                onClick = {
+                    showMenu = false
+                    onDeleteClick(project)
+                },
+                leadingIcon = { Icon(Icons.Default.Delete, null, tint = Color.Red) }
+            )
         }
     }
 }
