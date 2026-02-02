@@ -1,6 +1,8 @@
 # HISTORICO DE ANÁLISIS - RunPod Manager
-# Última actualización: 2026-02-02 (Sesión 2: Barra de Proyectos)
+# Última actualización: 2026-02-02
 # ============================================================
+# Este archivo documenta la funcionalidad de la app para futuras sesiones de Claude Code.
+# NO es un log de commits, sino una referencia de QUÉ hace cada parte de la app.
 
 ## RESUMEN EJECUTIVO
 
@@ -265,26 +267,7 @@ exec /start.sh
 
 ---
 
-## 13. HISTORIAL DE COMMITS RECIENTES
-
-07ab64a feat: Improve APK install flow and add Uninstall button
-947acb8 feat: Add Google Speech-to-Text and improve APK install flow
-d386823 29-01
-73a9492 feat: Add shared debug keystore for multi-location development
-ac384fb chore: Remove private key from repository
-
----
-
-## 14. ARCHIVOS MODIFICADOS PENDIENTES (al momento del análisis)
-
-- .claude/settings.local.json
-- app/src/main/AndroidManifest.xml
-- app/src/main/java/com/example/runpodmanager/ui/screens/terminal/TerminalScreen.kt
-- app/src/main/java/com/example/runpodmanager/ui/screens/terminal/TerminalViewModel.kt
-
----
-
-## 15. NOTAS PARA FUTURAS SESIONES
+## 13. NOTAS PARA FUTURAS SESIONES
 
 - La app usa arquitectura MVVM limpia con Hilt para DI
 - El terminal integra Termux como emulador
@@ -296,51 +279,131 @@ ac384fb chore: Remove private key from repository
 
 ---
 
-## 16. CAMBIOS SESIÓN 2026-02-02 (Barra de Proyectos)
+## 14. FUNCIONALIDADES DEL TERMINAL (TerminalScreen + TerminalViewModel)
 
-### Funcionalidades implementadas en ProjectsBar:
+### 14.1 Barra de Proyectos (ProjectsBar)
 
-#### Botón Uninstall
-- Abre Settings > App Info para desinstalar (evita restricciones de ROMs como Oppo/OnePlus)
-- Solo visible cuando `isAppInstalled == true`
-- Usa `ACTION_APPLICATION_DETAILS_SETTINGS` con URI `package:{packageName}`
+La barra superior del terminal permite gestionar proyectos Android remotos:
 
-#### Botón Install
-- Descarga APK vía SFTP desde `{project}/app/build/outputs/apk/debug/app-debug.apk`
+**Selector de Proyecto:**
+- Dropdown que lista proyectos Gradle en `/workspace/projects/` del pod
+- Al seleccionar un proyecto, detecta automáticamente:
+  - `appPackageName`: Lee del `build.gradle` o `AndroidManifest.xml`
+  - `isAppInstalled`: Verifica si la app está instalada en el dispositivo
+  - `isApkAvailable`: Verifica si existe APK compilado en el pod
+
+**Botón Build:**
+- Ejecuta `/workspace/compilar.sh {proyecto}` vía SSH
+- El script en el pod ejecuta `./gradlew assembleDebug --no-daemon`
+- Muestra spinner durante la compilación
+- Actualiza `buildSuccess` (true/false) según código de salida
+- Tras build exitoso, re-verifica si APK existe
+
+**Botón Install:**
+- Visible solo si `isApkAvailable == true`
+- Descarga APK vía SFTP desde `{proyecto}/app/build/outputs/apk/debug/app-debug.apk`
 - Guarda en `context.cacheDir/apks/app-debug.apk`
-- Usa FileProvider para compartir el archivo
-- Lanza instalador con `ACTION_VIEW` + MIME `application/vnd.android.package-archive`
-- Muestra indicador circular de progreso con porcentaje durante descarga
-- Solo visible cuando `isApkAvailable == true`
+- Muestra progreso circular con porcentaje durante descarga
+- Lanza instalador Android con FileProvider + ACTION_VIEW
 
-#### Botón Build
-- Ejecuta `/workspace/compilar.sh {project}` vía `sshManager.executeCommand()`
-- Muestra spinner mientras compila
-- Captura código de salida (0=éxito, 1=error)
-- Después de build exitoso, verifica si APK existe
+**Botón Uninstall:**
+- Visible solo si `isAppInstalled == true`
+- Abre Settings > App Info (ACTION_APPLICATION_DETAILS_SETTINGS)
+- Evita restricciones de ROMs como Oppo/OnePlus que bloquean desinstalación directa
 
-#### BroadcastReceiver para detección de instalación/desinstalación
-- Escucha: ACTION_PACKAGE_ADDED, ACTION_PACKAGE_REPLACED, ACTION_PACKAGE_REMOVED
-- Actualiza `isAppInstalled` automáticamente
-- Registrado en init(), desregistrado en onCleared()
-- Compatible con Android 13+ (usa RECEIVER_NOT_EXPORTED)
+### 14.2 Detección de Instalación/Desinstalación
 
-### Estados agregados a TerminalUiState:
-- `isApkAvailable: Boolean?` - null=checking, true/false=resultado
-- `isBuilding: Boolean` - indica si está compilando
-- `isDownloadingApk: Boolean` - indica si está descargando APK
-- `downloadProgress: Float` - progreso de descarga (0.0 a 1.0)
+**BroadcastReceiver (packageReceiver):**
+- Escucha eventos del sistema: PACKAGE_ADDED, PACKAGE_REPLACED, PACKAGE_REMOVED
+- Actualiza `isAppInstalled` automáticamente cuando el usuario instala/desinstala
+- Registrado en init() con RECEIVER_NOT_EXPORTED (Android 13+)
+- Desregistrado en onCleared() para evitar memory leaks
 
-### Script compilar.sh (en pod /workspace/compilar.sh):
-- Recibe directorio del proyecto como argumento
-- Ejecuta `./gradlew assembleDebug --no-daemon`
-- Retorna `exit 0` en éxito, `exit 1` en error
-- Verifica existencia de gradlew y APK generado
+### 14.3 Entrada por Voz
 
-### Archivos modificados:
-- TerminalViewModel.kt - lógica de Build/Install/Uninstall, BroadcastReceiver
-- TerminalScreen.kt - UI de ProjectsBar con indicadores de progreso
-- compilar.sh - agregado `exit 0` al final
+- Botón de micrófono en la barra de teclas extra
+- Usa Android SpeechRecognizer sin diálogo UI
+- Convierte texto a minúsculas
+- Reemplaza doble espacio con Tab
+- Envía como texto raw al terminal (sin Enter automático)
+
+### 14.4 Barra de Teclas Extra
+
+Teclas especiales para terminal SSH:
+- Flechas (↑↓←→) con secuencias ANSI
+- Ctrl+C, Ctrl+D, Ctrl+Z
+- ESC, Tab, Enter
+- Botón de voz
+
+### 14.5 Estados del TerminalUiState
+
+```kotlin
+data class TerminalUiState(
+    val host: String = "",
+    val port: Int = 22,
+    val connectionState: ConnectionState = ConnectionState.Disconnected,
+    val terminalLines: List<String> = emptyList(),
+    val projects: List<String> = emptyList(),
+    val isLoadingProjects: Boolean = false,
+    val selectedProject: String? = null,
+    val appPackageName: String? = null,
+    val isAppInstalled: Boolean? = null,    // null=checking
+    val isApkAvailable: Boolean? = null,    // null=checking
+    val isBuilding: Boolean = false,
+    val isDownloadingApk: Boolean = false,
+    val downloadProgress: Float = 0f,
+    val buildSuccess: Boolean? = null       // null=no result
+)
+```
+
+---
+
+## 15. SCRIPT DE COMPILACIÓN EN EL POD
+
+Archivo: `/workspace/compilar.sh`
+
+```bash
+#!/bin/bash
+PROJECT_DIR="/workspace/projects/$1"
+cd "$PROJECT_DIR"
+if [ ! -f "gradlew" ]; then
+    echo "Error: gradlew no encontrado"
+    exit 1
+fi
+./gradlew assembleDebug --no-daemon
+if [ -f "app/build/outputs/apk/debug/app-debug.apk" ]; then
+    echo "Build exitoso"
+    exit 0
+else
+    echo "Error: APK no generado"
+    exit 1
+fi
+```
+
+---
+
+## 16. PERMISOS IMPORTANTES
+
+| Permiso | Uso |
+|---------|-----|
+| RECORD_AUDIO | Entrada por voz en terminal |
+| REQUEST_INSTALL_PACKAGES | Instalar APKs descargados |
+| QUERY_ALL_PACKAGES | Detectar si app está instalada |
+| FOREGROUND_SERVICE_DATA_SYNC | Mantener SSH activo en background |
+
+---
+
+## 17. FLUJO TÍPICO DE DESARROLLO
+
+1. Usuario conecta SSH al pod desde PodListScreen
+2. TerminalScreen carga, descubre proyectos en /workspace/projects/
+3. Usuario selecciona proyecto del dropdown
+4. Sistema detecta package name y estado de instalación
+5. Usuario presiona Build → compila en el pod
+6. Si build OK → botón Install aparece
+7. Usuario presiona Install → descarga APK + lanza instalador
+8. BroadcastReceiver detecta instalación → actualiza UI
+9. Botón Uninstall aparece para desinstalar si necesario
 
 ---
 
