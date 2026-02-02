@@ -1,0 +1,299 @@
+# HISTORICO DE ANÁLISIS - RunPod Manager
+# Última actualización: 2026-02-02
+# ============================================================
+
+## RESUMEN EJECUTIVO
+
+RunPod Manager es una aplicación Android para gestionar pods de computación GPU/CPU en la plataforma RunPod Cloud. Permite crear, iniciar, detener y eliminar pods, así como conectarse vía SSH con terminal integrado.
+
+---
+
+## 1. PROPÓSITO Y FUNCIONALIDAD PRINCIPAL
+
+La aplicación permite a los usuarios:
+- Gestionar pods de computación en la nube (iniciar, detener, eliminar)
+- Crear nuevos pods con configuraciones personalizadas de GPU o CPU
+- Conectarse a pods vía SSH con terminal interactivo
+- Ver detalles del pod: estado, costo, IP, mapeo de puertos
+- Configurar API keys y claves SSH
+- Ejecutar builds de apps Android y despliegues mediante SSH
+
+---
+
+## 2. PANTALLAS PRINCIPALES
+
+| Pantalla | Propósito | Archivo |
+|----------|-----------|---------|
+| Splash | Pantalla inicial, verifica API key | ui/screens/splash/SplashScreen.kt |
+| Settings | Gestionar API key y generar claves SSH | ui/screens/settings/SettingsScreen.kt |
+| Pod List | Lista de pods con operaciones start/stop/delete | ui/screens/pods/PodListScreen.kt |
+| Create Pod | Crear pods con config GPU/CPU, disco, volumen | ui/screens/create/CreatePodScreen.kt |
+| Terminal | Terminal SSH con entrada por voz y herramientas de build | ui/screens/terminal/TerminalScreen.kt |
+
+---
+
+## 3. ARQUITECTURA
+
+Patrón: MVVM (Model-View-ViewModel) con Jetpack Compose
+
+Componentes clave:
+- Capa de datos: Retrofit para API, DataStore/EncryptedSharedPreferences para storage local, SSHJ para SSH
+- Capa UI: Jetpack Compose declarativo, StateFlow para estado reactivo
+- Inyección de dependencias: Hilt (Dagger 2)
+- Navegación: Jetpack Navigation Compose
+
+---
+
+## 4. DEPENDENCIAS PRINCIPALES
+
+| Categoría | Tecnología | Versión |
+|-----------|-----------|---------|
+| Lenguaje | Kotlin | 1.5.8 (compiler) |
+| Android | API 26-34 | Compose BOM 2024.02.00 |
+| Networking | Retrofit 2 | 2.9.0 |
+| HTTP Client | OkHttp | 4.12.0 |
+| JSON | Gson | via Retrofit |
+| DI | Hilt | 2.50 |
+| SSH | SSHJ | 0.38.0 |
+| Crypto | BouncyCastle | 1.77 |
+| EdDSA | net.i2p.crypto | 0.3.0 |
+| Storage | DataStore Prefs | 1.0.0 |
+| Security | Security Crypto | 1.1.0-alpha06 |
+| Coroutines | Kotlinx Coroutines | 1.7.3 |
+| Terminal | Termux (modificado) | Custom |
+| UI | Material Design 3 | Latest |
+
+---
+
+## 5. ESTRUCTURA DE PAQUETES
+
+com.example.runpodmanager/
+├── data/
+│   ├── api/
+│   │   ├── RunpodApi.kt           (Interfaz Retrofit)
+│   │   └── AuthInterceptor.kt     (Interceptor Bearer token)
+│   ├── local/
+│   │   └── ApiKeyManager.kt       (DataStore + Encrypted prefs)
+│   ├── model/
+│   │   ├── Pod.kt                 (Modelo principal con clases anidadas)
+│   │   ├── CreatePodRequest.kt    (Payload creación)
+│   │   ├── UpdatePodRequest.kt    (Payload actualización)
+│   │   ├── GpuType.kt             (Opciones GPU/CPU)
+│   │   ├── NetworkVolume.kt       (Volúmenes de red)
+│   │   └── Template.kt            (Templates)
+│   ├── repository/
+│   │   └── PodRepository.kt       (Acceso unificado con ApiResult sealed class)
+│   └── ssh/
+│       ├── SshManager.kt          (Wrapper SSHJ)
+│       ├── SshKeyManager.kt       (Generación claves RSA)
+│       ├── SshTerminalBridge.kt   (Puente SSH-Termux)
+│       └── SshForegroundService.kt (Servicio background SSH)
+├── ui/
+│   ├── navigation/
+│   │   └── NavGraph.kt            (Rutas de navegación)
+│   ├── screens/
+│   │   ├── splash/
+│   │   ├── settings/
+│   │   ├── pods/
+│   │   ├── create/
+│   │   └── terminal/
+│   ├── components/
+│   │   ├── PodCard.kt
+│   │   ├── StatusChip.kt
+│   │   └── LoadingOverlay.kt
+│   └── theme/
+│       └── Theme.kt
+├── di/
+│   └── AppModule.kt               (Configuración Hilt DI)
+├── MainActivity.kt                 (Entry point)
+└── RunpodApp.kt                    (@HiltAndroidApp)
+
+---
+
+## 6. API EXTERNA - RunPod REST API
+
+Base URL: https://rest.runpod.io/v1/
+
+Endpoints (RunpodApi.kt):
+- GET    /pods                     Lista todos los pods
+- GET    /pods/{podId}            Obtener pod específico
+- POST   /pods                    Crear pod
+- PATCH  /pods/{podId}            Actualizar pod
+- DELETE /pods/{podId}            Eliminar pod
+- POST   /pods/{podId}/start      Iniciar pod
+- POST   /pods/{podId}/stop       Detener pod
+- GET    /networkvolumes          Listar volúmenes de red
+- GET    /templates               Listar templates
+
+Autenticación: Bearer token (API Key) vía header Authorization en AuthInterceptor
+
+---
+
+## 7. VIEWMODELS Y RESPONSABILIDADES
+
+| ViewModel | Archivo | Responsabilidades |
+|-----------|---------|-------------------|
+| SplashViewModel | splash/SplashViewModel.kt | Verificar API key, decidir ruta navegación |
+| SettingsViewModel | settings/SettingsViewModel.kt | Gestión API key, validación, generar/eliminar SSH keys |
+| PodListViewModel | pods/PodListViewModel.kt | Cargar pods, operaciones start/stop/delete, refresh, errores |
+| CreatePodViewModel | create/CreatePodViewModel.kt | Estado formulario creación, cargar volúmenes, construir request |
+| TerminalViewModel | terminal/TerminalViewModel.kt | Conexión SSH, ciclo de vida sesión terminal, detección proyectos, estado instalación apps |
+
+Patrón de estado: MutableStateFlow<UiState> con .update{} para mutaciones inmutables
+
+---
+
+## 8. MODELOS DE DATOS PRINCIPALES
+
+1. Pod (data/model/Pod.kt):
+   - Clases anidadas: Machine, Runtime, GpuInfo, PortInfo
+   - Campos: id, name, desiredStatus, imageName, gpuType, gpuCount, vcpuCount, memoryInGb, containerDiskInGb, volumeInGb, ports, env, machineId, costPerHr, uptimeInSeconds, portMappings, publicIp
+
+2. CreatePodRequest (data/model/CreatePodRequest.kt):
+   - name, imageName, templateId, gpuTypeIds, gpuCount, containerDiskInGb, volumeInGb, volumeMountPath, ports, env, cloudType, computeType, cpuFlavorIds, vcpuCount, memorySizeInGb, allowedCudaVersions, networkVolumeId, dockerStartCmd
+
+3. NetworkVolume (data/model/NetworkVolume.kt):
+   - id, name, size, dataCenterId, dataCenter (anidado)
+
+4. Template (data/model/Template.kt):
+   - id, name, imageName, containerDiskInGb, volumeInGb, ports, isPublic, isServerless
+
+5. GpuOption / CpuOption (data/model/GpuType.kt):
+   - id, name, costPerHour
+   - Listas predefinidas en objeto ComputeTypes
+
+---
+
+## 9. DETALLES DE IMPLEMENTACIÓN NOTABLES
+
+### Seguridad y Autenticación
+
+API Key Management (ApiKeyManager.kt):
+- DataStore Preferences para acceso reactivo con Flow
+- Caché volátil para acceso síncrono en interceptors
+- EncryptedSharedPreferences con AES256-GCM para SSH keys
+
+SSH Key Generation (SshKeyManager.kt):
+- Genera pares RSA de 4096 bits con BouncyCastle
+- Convierte a formatos PEM (PKCS8) y OpenSSH
+- Almacenamiento encriptado en SharedPreferences
+
+### Manejo de Errores
+
+Patrón Sealed Result (PodRepository.kt):
+sealed class ApiResult<out T> {
+    data class Success<T>(val data: T) : ApiResult<T>()
+    data class Error(val message: String, val code: Int? = null) : ApiResult<Nothing>()
+}
+
+### Implementación SSH
+
+SSHJ Integration (SshManager.kt):
+- Config SSH personalizada excluyendo X25519 (compatibilidad Android)
+- PromiscuousVerifier para verificación de host (producción necesita verificación real)
+- Coroutine scope independiente para reader de output
+- SharedFlow con buffer para streaming de output terminal
+- Keepalive cada 30 segundos
+- Soporte descarga archivos vía SFTP
+
+Terminal Bridge (SshTerminalBridge.kt):
+- Crea TerminalSession externa (sin PTY local)
+- Puente I/O entre SSHJ y emulador terminal Termux
+- Usa Channel para operaciones de escritura ordenadas
+
+Foreground Service (SshForegroundService.kt):
+- Mantiene conexión SSH activa en background
+- Usa permiso FOREGROUND_SERVICE_DATA_SYNC
+
+### Features del Terminal
+
+TerminalScreen.kt:
+- TerminalView de Termux embebido con controlador custom
+- Barra de teclas extra con secuencias ANSI (flechas, Ctrl+C, ESC, etc.)
+- Barra de proyectos que descubre proyectos Gradle en /workspace/projects
+- Entrada por voz con Android SpeechRecognizer (sin diálogo UI)
+- Detección instalación app vía PackageManager
+- Botones Build/Install/Uninstall (actualmente stubs)
+- Redimensionado dinámico de PTY
+
+Procesamiento comandos de voz (TerminalViewModel.kt):
+- Convierte a minúsculas, reemplaza doble espacio con tab
+- Envía como texto raw sin Enter automático
+
+### Creación de Pods
+
+Startup Script (CreatePodViewModel.kt):
+cd /workspace && \
+mkdir -p ~/.ssh && echo '<SSH_PUBLIC_KEY>' >> ~/.ssh/authorized_keys && \
+chmod 600 ~/.ssh/authorized_keys && \
+source /workspace/setup_env.sh && \
+/workspace/start_tailscale.sh && \
+exec /start.sh
+
+---
+
+## 10. PERMISOS REQUERIDOS (AndroidManifest.xml)
+
+- INTERNET
+- FOREGROUND_SERVICE
+- FOREGROUND_SERVICE_DATA_SYNC
+- WAKE_LOCK
+- POST_NOTIFICATIONS
+- RECORD_AUDIO
+- REQUEST_INSTALL_PACKAGES
+- QUERY_ALL_PACKAGES
+
+---
+
+## 11. CONFIGURACIÓN DE RED (AppModule.kt)
+
+- Timeouts: 30 segundos (conexión, lectura, escritura)
+- AuthInterceptor para Bearer token
+- HttpLoggingInterceptor nivel BODY
+- Gson converter factory para JSON
+
+---
+
+## 12. CONFIGURACIÓN DEL PROYECTO
+
+- Target: Android 34 (API 34)
+- Min SDK: 26
+- Java Version: 17
+- Kotlin: Latest con Compose 1.5.8
+- Debug Signing: Keystore compartido en ../debug.keystore
+- Compose BOM: 2024.02.00
+
+---
+
+## 13. HISTORIAL DE COMMITS RECIENTES
+
+07ab64a feat: Improve APK install flow and add Uninstall button
+947acb8 feat: Add Google Speech-to-Text and improve APK install flow
+d386823 29-01
+73a9492 feat: Add shared debug keystore for multi-location development
+ac384fb chore: Remove private key from repository
+
+---
+
+## 14. ARCHIVOS MODIFICADOS PENDIENTES (al momento del análisis)
+
+- .claude/settings.local.json
+- app/src/main/AndroidManifest.xml
+- app/src/main/java/com/example/runpodmanager/ui/screens/terminal/TerminalScreen.kt
+- app/src/main/java/com/example/runpodmanager/ui/screens/terminal/TerminalViewModel.kt
+
+---
+
+## 15. NOTAS PARA FUTURAS SESIONES
+
+- La app usa arquitectura MVVM limpia con Hilt para DI
+- El terminal integra Termux como emulador
+- SSH usa SSHJ con claves RSA 4096-bit generadas localmente
+- La API de RunPod requiere autenticación Bearer token
+- Los pods se crean con script de inicio que configura SSH keys automáticamente
+- Entrada por voz integrada para comandos en terminal
+- El servicio en primer plano mantiene la conexión SSH activa en background
+
+---
+
+# FIN DEL DOCUMENTO
