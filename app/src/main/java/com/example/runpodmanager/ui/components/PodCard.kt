@@ -47,8 +47,9 @@ fun PodCard(
 ) {
     var showMenu by remember { mutableStateOf(false) }
     val isRunning = pod.desiredStatus?.uppercase() == "RUNNING"
-    val sshCommand = pod.publicIp?.let { ip -> pod.portMappings?.get("22")?.let { "ssh root@$ip -p $it" } }
-    val nameWithPrice = pod.name + (pod.costPerHr?.let { " (\$${String.format("%.3f", it)}/hr)" } ?: "")
+    val sshCommand = buildSshCommand(pod.publicIp, pod.portMappings?.get("22"))
+    val isSshAvailable = isRunning && sshCommand != null
+    val nameWithPrice = buildPodDisplayName(pod.name, pod.costPerHr)
 
     Box(modifier = modifier) {
         Card(
@@ -83,22 +84,18 @@ fun PodCard(
                     StatusChip(status = pod.desiredStatus ?: "UNKNOWN")
                 }
 
-                // Línea 2: SSH command (clickeable si está disponible)
                 Text(
                     text = sshCommand ?: "SSH no disponible",
                     style = MaterialTheme.typography.bodySmall.copy(
-                        textDecoration = if (isRunning && sshCommand != null) TextDecoration.Underline else TextDecoration.None
+                        textDecoration = if (isSshAvailable) TextDecoration.Underline else TextDecoration.None
                     ),
-                    color = if (isRunning && sshCommand != null)
+                    color = if (isSshAvailable)
                         MaterialTheme.colorScheme.primary
                     else
                         MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
-                    modifier = if (isRunning && sshCommand != null)
-                        Modifier.clickable { onSshClick() }
-                    else
-                        Modifier
+                    modifier = if (isSshAvailable) Modifier.clickable { onSshClick() } else Modifier
                 )
             }
         }
@@ -152,4 +149,14 @@ fun PodCard(
             )
         }
     }
+}
+
+private fun buildSshCommand(publicIp: String?, sshPort: Int?): String? {
+    if (publicIp == null || sshPort == null) return null
+    return "ssh root@$publicIp -p $sshPort"
+}
+
+private fun buildPodDisplayName(name: String, costPerHr: Double?): String {
+    val priceStr = costPerHr?.let { " (\$${String.format("%.3f", it)}/hr)" } ?: ""
+    return "$name$priceStr"
 }

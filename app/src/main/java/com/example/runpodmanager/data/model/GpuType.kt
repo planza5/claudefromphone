@@ -12,12 +12,6 @@ data class CpuOption(
     val costPerHour: Double
 )
 
-data class PodTemplate(
-    val id: String,
-    val name: String,
-    val description: String
-)
-
 object ComputeTypes {
     val gpuTypes = listOf(
         GpuOption("NVIDIA GeForce RTX 4090", "RTX 4090", 0.44),
@@ -45,17 +39,4 @@ object ComputeTypes {
         CpuOption("cpu32c", "32 vCPU, 124GB RAM", 0.76)
     )
 
-    val commonImages = listOf(
-        "runpod/pytorch:2.1.0-py3.10-cuda11.8.0-devel-ubuntu22.04",
-        "runpod/pytorch:2.0.1-py3.10-cuda11.8.0-devel-ubuntu22.04",
-        "runpod/stable-diffusion:web-automatic-8.0.3",
-        "runpod/tensorflow:2.13.0-py3.10-cuda11.8.0-devel-ubuntu22.04"
-    )
-
-    // Imagenes ligeras para CPU (inicio rapido)
-    val cpuImages = listOf(
-        "runpod/pytorch:2.1.0-py3.10-cuda11.8.0-devel-ubuntu22.04",
-        "runpod/base:0.6.2-cuda12.2.0",
-        "runpod/base:0.4.4-cuda11.8.0"
-    )
 }

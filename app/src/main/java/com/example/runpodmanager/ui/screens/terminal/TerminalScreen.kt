@@ -11,12 +11,12 @@ import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -30,11 +30,8 @@ import androidx.compose.material3.Surface
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Build
-import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Download
-import androidx.compose.material.icons.filled.Error
-import androidx.compose.material.icons.filled.HourglassEmpty
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.LinkOff
 import androidx.compose.material.icons.filled.Mic
@@ -70,6 +67,8 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.compose.ui.platform.LocalLifecycleOwner
+import com.example.runpodmanager.ui.components.BuildProgressOverlay
+import com.example.runpodmanager.ui.components.BuildResultOverlay
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import com.termux.view.TerminalView
@@ -465,85 +464,78 @@ fun TerminalScreen(
                 }
             }
 
-            // Overlay de carga durante Build o Download
-            if (uiState.isBuilding || uiState.isDownloadingApk) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(Color.Black.copy(alpha = 0.85f))
-                        .clickable(enabled = false) { }, // Bloquea interacción
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.HourglassEmpty,
-                            contentDescription = null,
-                            tint = Color(0xFF4EC9B0),
-                            modifier = Modifier.size(80.dp)
-                        )
-                        Spacer(modifier = Modifier.height(24.dp))
-                        Text(
-                            text = if (uiState.isBuilding) "Compilando..." else "Descargando APK...",
-                            color = Color.White,
-                            style = MaterialTheme.typography.headlineSmall
-                        )
-                        if (uiState.isDownloadingApk) {
-                            Spacer(modifier = Modifier.height(16.dp))
-                            Text(
-                                text = "${(uiState.downloadProgress * 100).toInt()}%",
-                                color = Color(0xFF4EC9B0),
-                                style = MaterialTheme.typography.titleLarge
-                            )
-                        }
-                        Spacer(modifier = Modifier.height(16.dp))
-                        CircularProgressIndicator(
-                            color = Color(0xFF4EC9B0),
-                            modifier = Modifier.size(48.dp)
-                        )
-                    }
-                }
-            }
+            BuildProgressOverlay(
+                isBuilding = uiState.isBuilding,
+                isDownloadingApk = uiState.isDownloadingApk,
+                downloadProgress = uiState.downloadProgress
+            )
 
-            // Overlay de resultado del Build
-            if (uiState.buildSuccess != null) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(Color.Black.copy(alpha = 0.9f))
-                        .clickable { viewModel.clearBuildResult() },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center
-                    ) {
-                        Icon(
-                            imageVector = if (uiState.buildSuccess == true)
-                                Icons.Default.CheckCircle else Icons.Default.Error,
-                            contentDescription = null,
-                            tint = if (uiState.buildSuccess == true)
-                                Color(0xFF4EC9B0) else Color(0xFFE53935),
-                            modifier = Modifier.size(100.dp)
-                        )
-                        Spacer(modifier = Modifier.height(24.dp))
-                        Text(
-                            text = if (uiState.buildSuccess == true)
-                                "Build Exitoso" else "Build Fallido",
-                            color = Color.White,
-                            style = MaterialTheme.typography.headlineMedium
-                        )
-                        Spacer(modifier = Modifier.height(32.dp))
-                        Text(
-                            text = "Toca para continuar",
-                            color = Color.Gray,
-                            style = MaterialTheme.typography.bodyMedium
-                        )
-                    }
-                }
+            BuildResultOverlay(
+                buildSuccess = uiState.buildSuccess,
+                onDismiss = viewModel::clearBuildResult
+            )
+        }
+    }
+}
+
+// Color constants for ProjectsBar
+private object ProjectsBarColors {
+    val Background = Color(0xFF1A1A1A)
+    val Key = Color(0xFF2D2D2D)
+    val Text = Color(0xFF9CDCFE)
+    val Accent = Color(0xFF4EC9B0)
+    val Install = Color(0xFF569CD6)
+    val Warning = Color(0xFFFF9800)
+    val Danger = Color(0xFFE53935)
+    val Installed = Color(0xFF6A9955)
+    val NotInstalled = Color(0xFFCE9178)
+}
+
+@Composable
+private fun RowScope.ActionButton(
+    onClick: () -> Unit,
+    color: Color,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    contentDescription: String,
+    iconTint: Color = Color.Black,
+    weight: Float = 1f
+) {
+    Surface(
+        onClick = onClick,
+        color = color,
+        shape = RoundedCornerShape(4.dp),
+        modifier = Modifier.weight(weight)
+    ) {
+        Icon(
+            icon,
+            contentDescription = contentDescription,
+            tint = iconTint,
+            modifier = Modifier.padding(12.dp).size(20.dp)
+        )
+    }
+}
+
+@Composable
+private fun InstallStatusLabel(isAppInstalled: Boolean?) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 8.dp, vertical = 4.dp),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        when (isAppInstalled) {
+            null -> {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(12.dp),
+                    color = ProjectsBarColors.Text,
+                    strokeWidth = 1.5.dp
+                )
+                Spacer(Modifier.size(6.dp))
+                Text("Checking...", color = ProjectsBarColors.Text, style = MaterialTheme.typography.labelSmall)
             }
+            true -> Text("● Installed", color = ProjectsBarColors.Installed, style = MaterialTheme.typography.labelSmall)
+            false -> Text("○ Not installed", color = ProjectsBarColors.NotInstalled, style = MaterialTheme.typography.labelSmall)
         }
     }
 }
@@ -567,202 +559,176 @@ fun ProjectsBar(
 ) {
     if (projects.isEmpty() && !isLoading && selectedProject == null) return
 
-    val keyColor = Color(0xFF2D2D2D)
-    val textColor = Color(0xFF9CDCFE)
-    val accentColor = Color(0xFF4EC9B0)
-    val installColor = Color(0xFF569CD6)
-    val warningColor = Color(0xFFFF9800)
-    val installedColor = Color(0xFF6A9955)
-    val notInstalledColor = Color(0xFFCE9178)
-
-    Surface(color = Color(0xFF1A1A1A), modifier = Modifier.fillMaxWidth()) {
+    Surface(color = ProjectsBarColors.Background, modifier = Modifier.fillMaxWidth()) {
         if (selectedProject != null) {
-            Column {
-                // Status label
+            SelectedProjectView(
+                isAppInstalled = isAppInstalled,
+                isApkAvailable = isApkAvailable,
+                isBuilding = isBuilding,
+                isDownloadingApk = isDownloadingApk,
+                downloadProgress = downloadProgress,
+                onBackClick = onBackClick,
+                onDeleteApkClick = onDeleteApkClick,
+                onBuildClick = onBuildClick,
+                onInstallClick = onInstallClick,
+                onUninstallClick = onUninstallClick
+            )
+        } else {
+            ProjectListView(
+                projects = projects,
+                isLoading = isLoading,
+                onProjectClick = onProjectClick
+            )
+        }
+    }
+}
+
+@Composable
+private fun SelectedProjectView(
+    isAppInstalled: Boolean?,
+    isApkAvailable: Boolean?,
+    isBuilding: Boolean,
+    isDownloadingApk: Boolean,
+    downloadProgress: Float,
+    onBackClick: () -> Unit,
+    onDeleteApkClick: () -> Unit,
+    onBuildClick: () -> Unit,
+    onInstallClick: () -> Unit,
+    onUninstallClick: () -> Unit
+) {
+    Column {
+        InstallStatusLabel(isAppInstalled)
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 4.dp, vertical = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            // Back button
+            Surface(
+                onClick = onBackClick,
+                color = ProjectsBarColors.Key,
+                shape = RoundedCornerShape(4.dp),
+                modifier = Modifier.weight(0.8f)
+            ) {
                 Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 10.dp),
                     horizontalArrangement = Arrangement.Center,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    when (isAppInstalled) {
-                        null -> {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(12.dp),
-                                color = textColor,
-                                strokeWidth = 1.5.dp
-                            )
-                            Spacer(Modifier.size(6.dp))
-                            Text("Checking...", color = textColor, style = androidx.compose.material3.MaterialTheme.typography.labelSmall)
-                        }
-                        true -> {
-                            Text("● Installed", color = installedColor, style = androidx.compose.material3.MaterialTheme.typography.labelSmall)
-                        }
-                        false -> {
-                            Text("○ Not installed", color = notInstalledColor, style = androidx.compose.material3.MaterialTheme.typography.labelSmall)
-                        }
-                    }
-                }
-                // Buttons row
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 4.dp, vertical = 4.dp),
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    // Back button
-                    Surface(
-                        onClick = onBackClick,
-                        color = keyColor,
-                        shape = RoundedCornerShape(4.dp),
-                        modifier = Modifier.weight(0.8f)
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 10.dp),
-                            horizontalArrangement = Arrangement.Center,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(
-                                Icons.AutoMirrored.Filled.ArrowBack,
-                                contentDescription = null,
-                                tint = textColor,
-                                modifier = Modifier.size(16.dp)
-                            )
-                        }
-                    }
-                // Delete APK button (only show when APK exists)
-                if (isApkAvailable == true) {
-                    Surface(
-                        onClick = onDeleteApkClick,
-                        color = Color(0xFFE53935),
-                        shape = RoundedCornerShape(4.dp),
-                        modifier = Modifier.weight(0.8f)
-                    ) {
-                        Icon(
-                            Icons.Default.Delete,
-                            contentDescription = "Delete APK",
-                            tint = Color.White,
-                            modifier = Modifier.padding(12.dp).size(20.dp)
-                        )
-                    }
-                }
-                // Build button
-                if (isBuilding) {
-                    Surface(
-                        color = accentColor.copy(alpha = 0.7f),
-                        shape = RoundedCornerShape(4.dp),
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.padding(10.dp).size(24.dp),
-                            color = Color.Black,
-                            strokeWidth = 2.dp
-                        )
-                    }
-                } else {
-                    Surface(
-                        onClick = onBuildClick,
-                        color = accentColor,
-                        shape = RoundedCornerShape(4.dp),
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Icon(
-                            Icons.Default.Build,
-                            contentDescription = "Build",
-                            tint = Color.Black,
-                            modifier = Modifier.padding(12.dp).size(20.dp)
-                        )
-                    }
-                }
-                // Install button (only show when APK is available)
-                if (isApkAvailable == true) {
-                    if (isDownloadingApk) {
-                        // Progress indicator while downloading
-                        Surface(
-                            color = installColor.copy(alpha = 0.7f),
-                            shape = RoundedCornerShape(4.dp),
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Box(
-                                contentAlignment = Alignment.Center,
-                                modifier = Modifier.padding(8.dp)
-                            ) {
-                                CircularProgressIndicator(
-                                    progress = { downloadProgress },
-                                    modifier = Modifier.size(28.dp),
-                                    color = Color.Black,
-                                    strokeWidth = 3.dp
-                                )
-                                Text(
-                                    text = "${(downloadProgress * 100).toInt()}%",
-                                    color = Color.Black,
-                                    style = MaterialTheme.typography.labelSmall
-                                )
-                            }
-                        }
-                    } else {
-                        Surface(
-                            onClick = onInstallClick,
-                            color = installColor,
-                            shape = RoundedCornerShape(4.dp),
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Icon(
-                                Icons.Default.Download,
-                                contentDescription = "Install",
-                                tint = Color.Black,
-                                modifier = Modifier.padding(12.dp).size(20.dp)
-                            )
-                        }
-                    }
-                }
-                // Uninstall button (only show when app is installed)
-                if (isAppInstalled == true) {
-                    Surface(
-                        onClick = {
-                            Log.d("TerminalScreen", "Uninstall button clicked!")
-                            onUninstallClick()
-                        },
-                        color = warningColor,
-                        shape = RoundedCornerShape(4.dp),
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Icon(
-                            Icons.Default.Delete,
-                            contentDescription = "Uninstall",
-                            tint = Color.Black,
-                            modifier = Modifier.padding(12.dp).size(20.dp)
-                        )
-                    }
-                }
+                    Icon(
+                        Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = null,
+                        tint = ProjectsBarColors.Text,
+                        modifier = Modifier.size(16.dp)
+                    )
                 }
             }
-        } else {
-            Row(
-                modifier = Modifier
-                    .horizontalScroll(rememberScrollState())
-                    .padding(horizontal = 4.dp, vertical = 4.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                if (isLoading) {
-                    CircularProgressIndicator(Modifier.size(16.dp), accentColor, strokeWidth = 2.dp)
-                    Text("Buscando proyectos...", color = Color.Gray, modifier = Modifier.padding(start = 8.dp))
-                } else {
-                    projects.forEach { project ->
-                        val projectName = project.substringAfterLast("/")
-                        Surface(
-                            onClick = { onProjectClick(project) },
-                            color = keyColor,
-                            shape = RoundedCornerShape(4.dp)
-                        ) {
+
+            if (isApkAvailable == true) {
+                ActionButton(
+                    onClick = onDeleteApkClick,
+                    color = ProjectsBarColors.Danger,
+                    icon = Icons.Default.Delete,
+                    contentDescription = "Delete APK",
+                    iconTint = Color.White,
+                    weight = 0.8f
+                )
+            }
+
+            // Build button
+            if (isBuilding) {
+                Surface(
+                    color = ProjectsBarColors.Accent.copy(alpha = 0.7f),
+                    shape = RoundedCornerShape(4.dp),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.padding(10.dp).size(24.dp),
+                        color = Color.Black,
+                        strokeWidth = 2.dp
+                    )
+                }
+            } else {
+                ActionButton(
+                    onClick = onBuildClick,
+                    color = ProjectsBarColors.Accent,
+                    icon = Icons.Default.Build,
+                    contentDescription = "Build"
+                )
+            }
+
+            // Install button
+            if (isApkAvailable == true) {
+                if (isDownloadingApk) {
+                    Surface(
+                        color = ProjectsBarColors.Install.copy(alpha = 0.7f),
+                        shape = RoundedCornerShape(4.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(8.dp)) {
+                            CircularProgressIndicator(
+                                progress = { downloadProgress },
+                                modifier = Modifier.size(28.dp),
+                                color = Color.Black,
+                                strokeWidth = 3.dp
+                            )
                             Text(
-                                projectName,
-                                color = textColor,
-                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)
+                                text = "${(downloadProgress * 100).toInt()}%",
+                                color = Color.Black,
+                                style = MaterialTheme.typography.labelSmall
                             )
                         }
                     }
+                } else {
+                    ActionButton(
+                        onClick = onInstallClick,
+                        color = ProjectsBarColors.Install,
+                        icon = Icons.Default.Download,
+                        contentDescription = "Install"
+                    )
+                }
+            }
+
+            if (isAppInstalled == true) {
+                ActionButton(
+                    onClick = onUninstallClick,
+                    color = ProjectsBarColors.Warning,
+                    icon = Icons.Default.Delete,
+                    contentDescription = "Uninstall"
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ProjectListView(
+    projects: List<String>,
+    isLoading: Boolean,
+    onProjectClick: (String) -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .horizontalScroll(rememberScrollState())
+            .padding(horizontal = 4.dp, vertical = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        if (isLoading) {
+            CircularProgressIndicator(Modifier.size(16.dp), ProjectsBarColors.Accent, strokeWidth = 2.dp)
+            Text("Buscando proyectos...", color = Color.Gray, modifier = Modifier.padding(start = 8.dp))
+        } else {
+            projects.forEach { project ->
+                Surface(
+                    onClick = { onProjectClick(project) },
+                    color = ProjectsBarColors.Key,
+                    shape = RoundedCornerShape(4.dp)
+                ) {
+                    Text(
+                        project.substringAfterLast("/"),
+                        color = ProjectsBarColors.Text,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)
+                    )
                 }
             }
         }

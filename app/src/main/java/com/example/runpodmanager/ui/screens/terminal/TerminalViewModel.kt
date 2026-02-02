@@ -60,6 +60,13 @@ class TerminalViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(TerminalUiState())
     val uiState: StateFlow<TerminalUiState> = _uiState.asStateFlow()
 
+    private fun isPackageInstalled(packageName: String): Boolean = try {
+        context.packageManager.getPackageInfo(packageName, 0)
+        true
+    } catch (e: Exception) {
+        false
+    }
+
     val controller = TerminalController(context)
     var session: TerminalSession? = null
         private set
@@ -84,14 +91,8 @@ class TerminalViewModel @Inject constructor(
                 Intent.ACTION_PACKAGE_REMOVED -> {
                     Log.d(TAG, "Package removed: $packageName, esperando: $currentPackage")
                     if (packageName != null && packageName == currentPackage) {
-                        // Verificar que realmente se desinstaló
-                        val isStillInstalled = try {
-                            context.packageManager.getPackageInfo(packageName, 0)
-                            true
-                        } catch (e: Exception) {
-                            false
-                        }
-                        Log.d(TAG, "App '$packageName' todavía instalada: $isStillInstalled")
+                        val isStillInstalled = isPackageInstalled(packageName)
+                        Log.d(TAG, "App '$packageName' todavia instalada: $isStillInstalled")
                         _uiState.update { it.copy(isAppInstalled = isStillInstalled) }
                     }
                 }
@@ -241,18 +242,17 @@ class TerminalViewModel @Inject constructor(
     fun selectProject(project: String) {
         viewModelScope.launch {
             sshManager.sendCommand("cd $project\n")
-            _uiState.update {
-                it.copy(
-                    selectedProject = project,
-                    appPackageName = null,
-                    isAppInstalled = null,
-                    isApkAvailable = null
-                )
-            }
+            _uiState.update { it.copy(selectedProject = project).resetProjectState() }
             checkAppInstallStatus(project)
             checkApkAvailable(project)
         }
     }
+
+    private fun TerminalUiState.resetProjectState(): TerminalUiState = copy(
+        appPackageName = null,
+        isAppInstalled = null,
+        isApkAvailable = null
+    )
 
     private fun checkAppInstallStatus(project: String) {
         viewModelScope.launch {
@@ -286,18 +286,9 @@ class TerminalViewModel @Inject constructor(
                 Log.d(TAG, "Package raw: '${result.take(100)}', limpio: '$cleanPackage', bytes: ${cleanPackage.toByteArray().contentToString()}")
 
                 if (cleanPackage.isNotBlank() && cleanPackage.contains(".")) {
-                    _uiState.update { it.copy(appPackageName = cleanPackage) }
-
-                    // Verificar si está instalada
-                    val isInstalled = try {
-                        context.packageManager.getPackageInfo(cleanPackage, 0)
-                        true
-                    } catch (e: Exception) {
-                        Log.d(TAG, "Package '$cleanPackage' no instalado. Exception: ${e.javaClass.simpleName}")
-                        false
-                    }
+                    val isInstalled = isPackageInstalled(cleanPackage)
                     Log.d(TAG, "App '$cleanPackage' instalada: $isInstalled")
-                    _uiState.update { it.copy(isAppInstalled = isInstalled) }
+                    _uiState.update { it.copy(appPackageName = cleanPackage, isAppInstalled = isInstalled) }
                 } else {
                     Log.w(TAG, "No se encontró package válido para $project")
                     _uiState.update { it.copy(isAppInstalled = null) }
@@ -332,14 +323,7 @@ class TerminalViewModel @Inject constructor(
     }
 
     fun goBackFromProject() {
-        _uiState.update {
-            it.copy(
-                selectedProject = null,
-                appPackageName = null,
-                isAppInstalled = null,
-                isApkAvailable = null
-            )
-        }
+        _uiState.update { it.copy(selectedProject = null).resetProjectState() }
     }
 
     fun deleteApk() {
