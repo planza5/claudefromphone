@@ -12,7 +12,8 @@ class AuthInterceptor @Inject constructor(
 ) : Interceptor {
 
     override fun intercept(chain: Interceptor.Chain): Response {
-        val apiKey = apiKeyManager.getApiKeySync()
+        // Eliminar newlines y caracteres de control (no espacios normales)
+        val apiKey = apiKeyManager.getApiKeySync().trim().replace("\n", "").replace("\r", "")
 
         val request = chain.request().newBuilder().apply {
             if (apiKey.isNotBlank()) {

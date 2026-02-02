@@ -450,4 +450,19 @@ Código eliminado por no usarse:
 
 ---
 
+## 19. MEJORAS DE INDICADORES DE CARGA (2026-02-02)
+
+### 19.1 BuildProgressOverlay Animado
+
+**Archivo:** `ui/components/BuildOverlays.kt`
+
+Mejoras aplicadas:
+- Añadida animación de rotación infinita al icono del reloj de arena
+- El icono rota 180 grados cada segundo usando `rememberInfiniteTransition`
+- Más visible y claro que la app está procesando durante build/download
+
+**NOTA:** Se intentaron añadir overlays adicionales en PodListScreen y CreatePodScreen pero causaron problemas de UI y fueron revertidos.
+
+---
+
 # FIN DEL DOCUMENTO

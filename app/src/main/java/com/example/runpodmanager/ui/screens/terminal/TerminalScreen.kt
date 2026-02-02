@@ -16,6 +16,7 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
@@ -33,6 +34,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.DeleteForever
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Link
@@ -72,6 +74,7 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -453,13 +456,14 @@ fun TerminalScreen(
                             downloadProgress = uiState.downloadProgress,
                             onProjectClick = { project -> viewModel.selectProject(project) },
                             onBackClick = { viewModel.goBackFromProject() },
-                            onDeleteApkClick = { viewModel.deleteApk() },
+                            onDeleteProjectClick = {
+                                uiState.selectedProject?.let { viewModel.showDeleteProjectDialog(it) }
+                            },
                             onBuildClick = { viewModel.buildProject() },
                             onInstallClick = { viewModel.installApk() },
                             onUninstallClick = { viewModel.uninstallApp() },
                             onCreateClick = { viewModel.showCreateProjectDialog() },
-                            onRenameClick = { project -> viewModel.showRenameProjectDialog(project) },
-                            onDeleteClick = { project -> viewModel.showDeleteProjectDialog(project) }
+                            onRenameClick = { project -> viewModel.showRenameProjectDialog(project) }
                         )
                     }
                 }
@@ -662,13 +666,12 @@ fun ProjectsBar(
     downloadProgress: Float,
     onProjectClick: (String) -> Unit,
     onBackClick: () -> Unit,
-    onDeleteApkClick: () -> Unit,
+    onDeleteProjectClick: () -> Unit,
     onBuildClick: () -> Unit,
     onInstallClick: () -> Unit,
     onUninstallClick: () -> Unit,
     onCreateClick: () -> Unit,
-    onRenameClick: (String) -> Unit,
-    onDeleteClick: (String) -> Unit
+    onRenameClick: (String) -> Unit
 ) {
     if (projects.isEmpty() && !isLoading && selectedProject == null) return
 
@@ -681,7 +684,7 @@ fun ProjectsBar(
                 isDownloadingApk = isDownloadingApk,
                 downloadProgress = downloadProgress,
                 onBackClick = onBackClick,
-                onDeleteApkClick = onDeleteApkClick,
+                onDeleteProjectClick = onDeleteProjectClick,
                 onBuildClick = onBuildClick,
                 onInstallClick = onInstallClick,
                 onUninstallClick = onUninstallClick
@@ -692,8 +695,7 @@ fun ProjectsBar(
                 isLoading = isLoading,
                 onProjectClick = onProjectClick,
                 onCreateClick = onCreateClick,
-                onRenameClick = onRenameClick,
-                onDeleteClick = onDeleteClick
+                onRenameClick = onRenameClick
             )
         }
     }
@@ -707,7 +709,7 @@ private fun SelectedProjectView(
     isDownloadingApk: Boolean,
     downloadProgress: Float,
     onBackClick: () -> Unit,
-    onDeleteApkClick: () -> Unit,
+    onDeleteProjectClick: () -> Unit,
     onBuildClick: () -> Unit,
     onInstallClick: () -> Unit,
     onUninstallClick: () -> Unit
@@ -739,17 +741,6 @@ private fun SelectedProjectView(
                         modifier = Modifier.size(16.dp)
                     )
                 }
-            }
-
-            if (isApkAvailable == true) {
-                ActionButton(
-                    onClick = onDeleteApkClick,
-                    color = ProjectsBarColors.Danger,
-                    icon = Icons.Default.Delete,
-                    contentDescription = "Delete APK",
-                    iconTint = Color.White,
-                    weight = 0.8f
-                )
             }
 
             // Build button
@@ -814,6 +805,14 @@ private fun SelectedProjectView(
                     contentDescription = "Uninstall"
                 )
             }
+
+            ActionButton(
+                onClick = onDeleteProjectClick,
+                color = ProjectsBarColors.Danger,
+                icon = Icons.Default.DeleteForever,
+                contentDescription = "Delete project",
+                iconTint = Color.White
+            )
         }
     }
 }
@@ -824,8 +823,7 @@ private fun ProjectListView(
     isLoading: Boolean,
     onProjectClick: (String) -> Unit,
     onCreateClick: () -> Unit,
-    onRenameClick: (String) -> Unit,
-    onDeleteClick: (String) -> Unit
+    onRenameClick: (String) -> Unit
 ) {
     Row(
         modifier = Modifier
@@ -855,8 +853,7 @@ private fun ProjectListView(
                 ProjectItem(
                     project = project,
                     onProjectClick = onProjectClick,
-                    onRenameClick = onRenameClick,
-                    onDeleteClick = onDeleteClick
+                    onRenameClick = onRenameClick
                 )
             }
         }
@@ -867,11 +864,8 @@ private fun ProjectListView(
 private fun ProjectItem(
     project: String,
     onProjectClick: (String) -> Unit,
-    onRenameClick: (String) -> Unit,
-    onDeleteClick: (String) -> Unit
+    onRenameClick: (String) -> Unit
 ) {
-    var showMenu by remember { mutableStateOf(false) }
-
     Box {
         Surface(
             color = ProjectsBarColors.Key,
@@ -879,36 +873,14 @@ private fun ProjectItem(
             modifier = Modifier.pointerInput(project) {
                 detectTapGestures(
                     onTap = { onProjectClick(project) },
-                    onLongPress = { showMenu = true }
+                    onLongPress = { onRenameClick(project) }
                 )
             }
         ) {
             Text(
                 project.substringAfterLast("/"),
                 color = ProjectsBarColors.Text,
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)
-            )
-        }
-
-        DropdownMenu(
-            expanded = showMenu,
-            onDismissRequest = { showMenu = false }
-        ) {
-            DropdownMenuItem(
-                text = { Text("Renombrar") },
-                onClick = {
-                    showMenu = false
-                    onRenameClick(project)
-                },
-                leadingIcon = { Icon(Icons.Default.Edit, null) }
-            )
-            DropdownMenuItem(
-                text = { Text("Eliminar", color = Color.Red) },
-                onClick = {
-                    showMenu = false
-                    onDeleteClick(project)
-                },
-                leadingIcon = { Icon(Icons.Default.Delete, null, tint = Color.Red) }
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
             )
         }
     }

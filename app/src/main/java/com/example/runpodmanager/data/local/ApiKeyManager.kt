@@ -36,9 +36,11 @@ class ApiKeyManager @Inject constructor(
     fun getApiKeySync(): String = cachedApiKey
 
     suspend fun saveApiKey(key: String) {
-        cachedApiKey = key
+        // Eliminar newlines y espacios al principio/final
+        val cleanKey = key.trim().replace("\n", "").replace("\r", "")
+        cachedApiKey = cleanKey
         context.dataStore.edit { preferences ->
-            preferences[API_KEY] = key
+            preferences[API_KEY] = cleanKey
         }
     }
 

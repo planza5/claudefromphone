@@ -355,9 +355,12 @@ class TerminalViewModel @Inject constructor(
 
     fun buildProject() {
         val project = _uiState.value.selectedProject ?: return
+        Log.d(TAG, "buildProject() llamado para: $project")
 
         viewModelScope.launch {
+            Log.d(TAG, "Poniendo isBuilding = true")
             _uiState.update { it.copy(isBuilding = true, isApkAvailable = null, buildSuccess = null) }
+            Log.d(TAG, "Estado actual isBuilding = ${_uiState.value.isBuilding}")
 
             val command = "/workspace/compilar.sh $project; echo \"EXIT_CODE:\$?\""
             Log.d(TAG, "Ejecutando build: $command")

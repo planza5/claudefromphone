@@ -1,5 +1,6 @@
 package com.example.runpodmanager.ui.components
 
+import android.util.Log
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -12,16 +13,24 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Error
-import androidx.compose.material.icons.filled.HourglassEmpty
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.isActive
 
 private val AccentColor = Color(0xFF4EC9B0)
 private val ErrorColor = Color(0xFFE53935)
@@ -33,7 +42,25 @@ fun BuildProgressOverlay(
     downloadProgress: Float,
     modifier: Modifier = Modifier
 ) {
+    Log.d("BuildOverlay", "isBuilding=$isBuilding, isDownloadingApk=$isDownloadingApk")
     if (!isBuilding && !isDownloadingApk) return
+    Log.d("BuildOverlay", "MOSTRANDO OVERLAY")
+
+    // Animación de rotación continua para el icono
+    var rotation by remember { mutableStateOf(0f) }
+    LaunchedEffect(isBuilding, isDownloadingApk) {
+        if (!isBuilding && !isDownloadingApk) return@LaunchedEffect
+        var lastFrameTime = 0L
+        while (isActive && (isBuilding || isDownloadingApk)) {
+            val frameTime = withFrameNanos { it }
+            if (lastFrameTime != 0L) {
+                val deltaNanos = frameTime - lastFrameTime
+                val deltaDegrees = (deltaNanos / 1_000_000_000f) * 360f
+                rotation = (rotation + deltaDegrees) % 360f
+            }
+            lastFrameTime = frameTime
+        }
+    }
 
     Box(
         modifier = modifier
@@ -47,10 +74,12 @@ fun BuildProgressOverlay(
             verticalArrangement = Arrangement.Center
         ) {
             Icon(
-                imageVector = Icons.Default.HourglassEmpty,
+                imageVector = Icons.Default.Refresh,
                 contentDescription = null,
                 tint = AccentColor,
-                modifier = Modifier.size(80.dp)
+                modifier = Modifier
+                    .size(80.dp)
+                    .rotate(rotation)
             )
             Spacer(modifier = Modifier.height(24.dp))
             Text(
