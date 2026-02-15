@@ -16,8 +16,6 @@ import androidx.lifecycle.viewModelScope
 import com.example.runpodmanager.data.ssh.SshConnectionState
 import com.example.runpodmanager.data.ssh.SshForegroundService
 import com.example.runpodmanager.data.ssh.SshManager
-import com.example.runpodmanager.data.ssh.SshTerminalBridge
-import com.termux.terminal.TerminalSession
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -37,6 +35,7 @@ data class TerminalUiState(
     val currentInput: String = "",
     val errorMessage: String? = null,
     val terminalReady: Boolean = false,
+    val terminalOutput: String = "",
     val projects: List<String> = emptyList(),
     val isLoadingProjects: Boolean = false,
     val selectedProject: String? = null,
@@ -61,7 +60,6 @@ data class TerminalUiState(
 @HiltViewModel
 class TerminalViewModel @Inject constructor(
     private val sshManager: SshManager,
-    private val bridge: SshTerminalBridge,
     @ApplicationContext private val context: Context,
     savedStateHandle: SavedStateHandle
 ) : ViewModel() {
@@ -75,10 +73,6 @@ class TerminalViewModel @Inject constructor(
     } catch (e: Exception) {
         false
     }
-
-    val controller = TerminalController(context)
-    var session: TerminalSession? = null
-        private set
 
     private val host: String = savedStateHandle.get<String>("host") ?: ""
     private val port: Int = savedStateHandle.get<Int>("port") ?: 22
@@ -112,9 +106,10 @@ class TerminalViewModel @Inject constructor(
     init {
         _uiState.update { it.copy(host = host, port = port) }
         observeConnectionState()
+        observeSshOutput()
         registerPackageReceiver()
 
-        if (host.isNotEmpty() && port > 0) {
+        if (host.isNotEmpty() && port > 0 && !sshManager.isConnected()) {
             connect()
         }
     }
@@ -141,13 +136,22 @@ class TerminalViewModel @Inject constructor(
         }
     }
 
+    private fun observeSshOutput() {
+        viewModelScope.launch {
+            sshManager.rawOutput.collect { bytes ->
+                val raw = String(bytes, Charsets.UTF_8)
+                val clean = sanitizeOutput(raw)
+                appendOutput(clean)
+            }
+        }
+    }
+
     private fun handleConnectionState(state: SshConnectionState) {
         when (state) {
             is SshConnectionState.Disconnected -> {
                 _uiState.update {
                     it.copy(isConnected = false, isConnecting = false, terminalReady = false)
                 }
-                bridge.stopOutputCollection()
                 stopForegroundService()
             }
             is SshConnectionState.Connecting -> {
@@ -169,17 +173,12 @@ class TerminalViewModel @Inject constructor(
                         terminalReady = false
                     )
                 }
-                bridge.stopOutputCollection()
                 stopForegroundService()
             }
         }
     }
 
     private fun initializeTerminal() {
-        val newSession = bridge.createSession(controller, 2000)
-        session = newSession
-        controller.setSession(newSession)
-        bridge.startOutputCollection()
         _uiState.update { it.copy(terminalReady = true) }
         loadProjects()
     }
@@ -206,8 +205,6 @@ class TerminalViewModel @Inject constructor(
     }
 
     fun disconnect() {
-        bridge.cleanup()
-        session = null
         sshManager.disconnect()
         stopForegroundService()
     }
@@ -254,8 +251,6 @@ class TerminalViewModel @Inject constructor(
         viewModelScope.launch {
             sshManager.sendCommand("cd $project\n")
             _uiState.update { it.copy(selectedProject = project).resetProjectState() }
-            checkAppInstallStatus(project)
-            checkApkAvailable(project)
         }
     }
 
@@ -611,8 +606,53 @@ class TerminalViewModel @Inject constructor(
         } catch (e: Exception) {
             Log.w(TAG, "Error unregistering receiver: ${e.message}")
         }
-        bridge.cleanup()
         sshManager.disconnect()
         stopForegroundService()
+    }
+
+    private fun sanitizeOutput(raw: String): String {
+        // Remove common ANSI escape sequences for a cleaner text view
+        val ansiRegex = Regex("\\u001B\\[[;\\d]*[ -/]*[@-~]")
+        return raw.replace(ansiRegex, "")
+    }
+
+    private fun appendOutput(text: String) {
+        if (text.isEmpty()) return
+        _uiState.update { state ->
+            val builder = StringBuilder(state.terminalOutput)
+
+            for (ch in text) {
+                when (ch) {
+                    '\r' -> {
+                        // Carriage return: clear current line
+                        val lastNewline = builder.lastIndexOf("\n")
+                        if (lastNewline >= 0) {
+                            builder.setLength(lastNewline + 1)
+                        } else {
+                            builder.setLength(0)
+                        }
+                    }
+                    '\b' -> {
+                        if (builder.isNotEmpty()) {
+                            builder.deleteCharAt(builder.length - 1)
+                        }
+                    }
+                    '\t' -> {
+                        builder.append("    ")
+                    }
+                    else -> {
+                        builder.append(ch)
+                    }
+                }
+            }
+
+            val maxChars = 20000
+            if (builder.length > maxChars) {
+                val trimmed = builder.substring(builder.length - maxChars)
+                state.copy(terminalOutput = trimmed)
+            } else {
+                state.copy(terminalOutput = builder.toString())
+            }
+        }
     }
 }

@@ -45,7 +45,7 @@ import kotlin.math.sin
 fun SplashScreen(
     viewModel: SplashViewModel = hiltViewModel(),
     onNavigateToSettings: () -> Unit,
-    onNavigateToPods: () -> Unit
+    onNavigateToAuto: () -> Unit
 ) {
     val hasApiKey by viewModel.hasApiKey.collectAsState()
     val isReady by viewModel.isReady.collectAsState()
@@ -55,11 +55,11 @@ fun SplashScreen(
     val textAlpha = remember { Animatable(0f) }
     val glowScale = remember { Animatable(1f) }
 
-    // Runpod brand colors
-    val runpodPurple = Color(0xFF7B2CBF)
-    val runpodPurpleDark = Color(0xFF5A189A)
-    val runpodPurpleLight = Color(0xFF9D4EDD)
-    val runpodPink = Color(0xFFE040FB)
+    // Light brand colors
+    val runpodBlue = Color(0xFF3B82F6)
+    val runpodBlueLight = Color(0xFF93C5FD)
+    val runpodCyan = Color(0xFF22D3EE)
+    val runpodGray = Color(0xFFF5F7FB)
 
     // Infinite glow animation
     val infiniteTransition = rememberInfiniteTransition(label = "glow")
@@ -127,7 +127,7 @@ fun SplashScreen(
     LaunchedEffect(isReady, scale.value) {
         if (isReady && scale.value >= 18f) {
             if (hasApiKey) {
-                onNavigateToPods()
+                onNavigateToAuto()
             } else {
                 onNavigateToSettings()
             }
@@ -140,10 +140,9 @@ fun SplashScreen(
             .background(
                 Brush.radialGradient(
                     colors = listOf(
-                        runpodPurple,
-                        runpodPurpleDark,
-                        Color(0xFF3C096C),
-                        Color(0xFF240046)
+                        Color.White,
+                        runpodGray,
+                        runpodBlueLight
                     ),
                     radius = 1500f
                 )
@@ -167,7 +166,7 @@ fun SplashScreen(
                 val y = centerY + (radius * sin(angle)).toFloat()
 
                 drawCircle(
-                    color = if (i % 2 == 0) runpodPink.copy(alpha = 0.6f) else runpodPurpleLight.copy(alpha = 0.5f),
+                    color = if (i % 2 == 0) runpodCyan.copy(alpha = 0.5f) else runpodBlueLight.copy(alpha = 0.4f),
                     radius = 8f + (i % 4) * 3f,
                     center = Offset(x, y)
                 )
@@ -181,7 +180,7 @@ fun SplashScreen(
                 val y = centerY + (radius * sin(angle)).toFloat()
 
                 drawCircle(
-                    color = Color.White.copy(alpha = 0.4f),
+                    color = runpodBlue.copy(alpha = 0.2f),
                     radius = 4f,
                     center = Offset(x, y)
                 )
@@ -198,8 +197,8 @@ fun SplashScreen(
                 .background(
                     Brush.radialGradient(
                         colors = listOf(
-                            runpodPink.copy(alpha = 0.8f),
-                            runpodPurple.copy(alpha = 0.4f),
+                            runpodCyan.copy(alpha = 0.5f),
+                            runpodBlue.copy(alpha = 0.25f),
                             Color.Transparent
                         )
                     ),
@@ -222,9 +221,9 @@ fun SplashScreen(
                     .background(
                         Brush.linearGradient(
                             colors = listOf(
-                                runpodPurpleLight,
-                                runpodPurple,
-                                runpodPink
+                                runpodBlueLight,
+                                runpodBlue,
+                                runpodCyan
                             )
                         )
                     ),
@@ -238,8 +237,8 @@ fun SplashScreen(
                         .background(
                             Brush.radialGradient(
                                 colors = listOf(
-                                    Color(0xFF240046),
-                                    Color(0xFF3C096C)
+                                    Color.White,
+                                    runpodGray
                                 )
                             )
                         ),
@@ -260,7 +259,7 @@ fun SplashScreen(
                 text = "RUNPOD",
                 fontSize = 36.sp,
                 fontWeight = FontWeight.Black,
-                color = Color.White,
+                color = runpodBlue,
                 letterSpacing = 10.sp,
                 modifier = Modifier.alpha(textAlpha.value)
             )
@@ -271,7 +270,7 @@ fun SplashScreen(
                 text = "M A N A G E R",
                 fontSize = 12.sp,
                 fontWeight = FontWeight.Normal,
-                color = runpodPink,
+                color = runpodCyan,
                 letterSpacing = 8.sp,
                 modifier = Modifier.alpha(textAlpha.value)
             )

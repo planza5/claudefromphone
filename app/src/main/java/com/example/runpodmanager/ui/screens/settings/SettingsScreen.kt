@@ -61,7 +61,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 fun SettingsScreen(
     viewModel: SettingsViewModel = hiltViewModel(),
     onNavigateBack: () -> Unit,
-    onNavigateToPods: () -> Unit
+    onNavigateToAuto: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsState()
     var showApiKey by remember { mutableStateOf(false) }
@@ -167,8 +167,8 @@ fun SettingsScreen(
                             text = "API Key guardada",
                             style = MaterialTheme.typography.bodyMedium
                         )
-                        Button(onClick = onNavigateToPods) {
-                            Text("Ir a Pods")
+                        Button(onClick = onNavigateToAuto) {
+                            Text("Ir a Inicio")
                         }
                     }
                 }

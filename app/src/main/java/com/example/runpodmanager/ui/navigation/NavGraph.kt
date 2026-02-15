@@ -6,17 +6,21 @@ import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
+import com.example.runpodmanager.ui.screens.auto.AutoPodScreen
 import com.example.runpodmanager.ui.screens.create.CreatePodScreen
-import com.example.runpodmanager.ui.screens.pods.PodListScreen
 import com.example.runpodmanager.ui.screens.settings.SettingsScreen
 import com.example.runpodmanager.ui.screens.splash.SplashScreen
+import com.example.runpodmanager.ui.screens.terminal.ProjectConsoleScreen
 import com.example.runpodmanager.ui.screens.terminal.TerminalScreen
 
 sealed class Screen(val route: String) {
     data object Splash : Screen("splash")
     data object Settings : Screen("settings")
-    data object PodList : Screen("pods")
+    data object AutoPod : Screen("auto")
     data object CreatePod : Screen("create")
+    data object ProjectConsole : Screen("project/{path}") {
+        fun createRoute(path: String) = "project/${java.net.URLEncoder.encode(path, Charsets.UTF_8.name())}"
+    }
     data object Terminal : Screen("terminal/{host}/{port}") {
         fun createRoute(host: String, port: Int) = "terminal/$host/$port"
     }
@@ -37,8 +41,8 @@ fun NavGraph(
                         popUpTo(Screen.Splash.route) { inclusive = true }
                     }
                 },
-                onNavigateToPods = {
-                    navController.navigate(Screen.PodList.route) {
+                onNavigateToAuto = {
+                    navController.navigate(Screen.AutoPod.route) {
                         popUpTo(Screen.Splash.route) { inclusive = true }
                     }
                 }
@@ -48,33 +52,25 @@ fun NavGraph(
         composable(Screen.Settings.route) {
             SettingsScreen(
                 onNavigateBack = {
-                    // Si no hay back stack (venimos de Splash), navegar a PodList
+                    // Si no hay back stack (venimos de Splash), navegar a AutoPod
                     if (!navController.popBackStack()) {
-                        navController.navigate(Screen.PodList.route) {
+                        navController.navigate(Screen.AutoPod.route) {
                             popUpTo(Screen.Settings.route) { inclusive = true }
                         }
                     }
                 },
-                onNavigateToPods = {
-                    navController.navigate(Screen.PodList.route) {
+                onNavigateToAuto = {
+                    navController.navigate(Screen.AutoPod.route) {
                         popUpTo(Screen.Settings.route) { inclusive = true }
                     }
                 }
             )
         }
 
-        composable(Screen.PodList.route) { backStackEntry ->
-            val shouldRefresh = backStackEntry.savedStateHandle.get<Boolean>("refresh") ?: false
-            PodListScreen(
-                shouldRefresh = shouldRefresh,
-                onRefreshHandled = {
-                    backStackEntry.savedStateHandle["refresh"] = false
-                },
+        composable(Screen.AutoPod.route) {
+            AutoPodScreen(
                 onNavigateToTerminal = { host, port ->
                     navController.navigate(Screen.Terminal.createRoute(host, port))
-                },
-                onNavigateToCreate = {
-                    navController.navigate(Screen.CreatePod.route)
                 },
                 onNavigateToSettings = {
                     navController.navigate(Screen.Settings.route)
@@ -86,7 +82,6 @@ fun NavGraph(
             CreatePodScreen(
                 onNavigateBack = { navController.popBackStack() },
                 onPodCreated = {
-                    navController.previousBackStackEntry?.savedStateHandle?.set("refresh", true)
                     navController.popBackStack()
                 }
             )
@@ -100,6 +95,20 @@ fun NavGraph(
             )
         ) {
             TerminalScreen(
+                onNavigateBack = { navController.popBackStack() },
+                onNavigateToProject = { path ->
+                    navController.navigate(Screen.ProjectConsole.createRoute(path))
+                }
+            )
+        }
+
+        composable(
+            route = Screen.ProjectConsole.route,
+            arguments = listOf(
+                navArgument("path") { type = NavType.StringType }
+            )
+        ) {
+            ProjectConsoleScreen(
                 onNavigateBack = { navController.popBackStack() }
             )
         }

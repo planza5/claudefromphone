@@ -40,10 +40,11 @@ fun BuildProgressOverlay(
     isBuilding: Boolean,
     isDownloadingApk: Boolean,
     downloadProgress: Float,
+    customText: String? = null,
     modifier: Modifier = Modifier
 ) {
     Log.d("BuildOverlay", "isBuilding=$isBuilding, isDownloadingApk=$isDownloadingApk")
-    if (!isBuilding && !isDownloadingApk) return
+    if (!isBuilding && !isDownloadingApk && customText == null) return
     Log.d("BuildOverlay", "MOSTRANDO OVERLAY")
 
     // Animación de rotación continua para el icono
@@ -83,7 +84,7 @@ fun BuildProgressOverlay(
             )
             Spacer(modifier = Modifier.height(24.dp))
             Text(
-                text = if (isBuilding) "Compilando..." else "Descargando APK...",
+                text = customText ?: if (isBuilding) "Compilando..." else "Descargando APK...",
                 color = Color.White,
                 style = MaterialTheme.typography.headlineSmall
             )

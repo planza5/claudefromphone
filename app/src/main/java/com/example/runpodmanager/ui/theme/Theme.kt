@@ -16,43 +16,40 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
 
-private val Purple = Color(0xFF6750A4)
-private val PurpleGrey = Color(0xFF625B71)
-private val Pink = Color(0xFF7D5260)
-private val PurpleLight = Color(0xFFD0BCFF)
-private val PurpleGreyLight = Color(0xFFCCC2DC)
-private val PinkLight = Color(0xFFEFB8C8)
+private val Primary = Color(0xFF3B82F6)
+private val Secondary = Color(0xFF10B981)
+private val Tertiary = Color(0xFFF59E0B)
 
 private val DarkColorScheme = darkColorScheme(
-    primary = PurpleLight,
-    secondary = PurpleGreyLight,
-    tertiary = PinkLight,
-    background = Color(0xFF1C1B1F),
-    surface = Color(0xFF1C1B1F),
-    onPrimary = Color(0xFF381E72),
-    onSecondary = Color(0xFF332D41),
-    onTertiary = Color(0xFF492532),
-    onBackground = Color(0xFFE6E1E5),
-    onSurface = Color(0xFFE6E1E5)
-)
-
-private val LightColorScheme = lightColorScheme(
-    primary = Purple,
-    secondary = PurpleGrey,
-    tertiary = Pink,
-    background = Color(0xFFFFFBFE),
-    surface = Color(0xFFFFFBFE),
+    primary = Primary,
+    secondary = Secondary,
+    tertiary = Tertiary,
+    background = Color(0xFF111827),
+    surface = Color(0xFF111827),
     onPrimary = Color.White,
     onSecondary = Color.White,
     onTertiary = Color.White,
-    onBackground = Color(0xFF1C1B1F),
-    onSurface = Color(0xFF1C1B1F)
+    onBackground = Color(0xFFF3F4F6),
+    onSurface = Color(0xFFF3F4F6)
+)
+
+private val LightColorScheme = lightColorScheme(
+    primary = Primary,
+    secondary = Secondary,
+    tertiary = Tertiary,
+    background = Color(0xFFF7F8FA),
+    surface = Color(0xFFFFFFFF),
+    onPrimary = Color.White,
+    onSecondary = Color.White,
+    onTertiary = Color.White,
+    onBackground = Color(0xFF111827),
+    onSurface = Color(0xFF111827)
 )
 
 @Composable
 fun RunpodManagerTheme(
-    darkTheme: Boolean = isSystemInDarkTheme(),
-    dynamicColor: Boolean = true,
+    darkTheme: Boolean = false,
+    dynamicColor: Boolean = false,
     content: @Composable () -> Unit
 ) {
     val colorScheme = when {
