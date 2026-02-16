@@ -17,6 +17,7 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -107,6 +108,8 @@ fun BuildProgressOverlay(
 @Composable
 fun BuildResultOverlay(
     buildSuccess: Boolean?,
+    canCopyLog: Boolean,
+    onCopyLog: () -> Unit,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -136,6 +139,16 @@ fun BuildResultOverlay(
                 color = Color.White,
                 style = MaterialTheme.typography.headlineMedium
             )
+            if (!isSuccess && canCopyLog) {
+                Spacer(modifier = Modifier.height(20.dp))
+                TextButton(onClick = onCopyLog) {
+                    Text(
+                        text = "Copy Log",
+                        color = AccentColor,
+                        style = MaterialTheme.typography.titleMedium
+                    )
+                }
+            }
             Spacer(modifier = Modifier.height(32.dp))
             Text(
                 text = "Toca para continuar",

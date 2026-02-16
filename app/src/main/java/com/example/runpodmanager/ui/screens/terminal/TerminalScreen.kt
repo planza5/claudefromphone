@@ -8,6 +8,7 @@ import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
 import android.util.Log
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -170,6 +171,11 @@ fun TerminalScreen(
 
     // Estado para el reconocimiento de voz
     var isListening by remember { mutableStateOf(false) }
+    var showExitConfirmDialog by remember { mutableStateOf(false) }
+
+    BackHandler {
+        showExitConfirmDialog = true
+    }
 
     // SpeechRecognizer sin diálogo
     val speechRecognizer = remember {
@@ -305,7 +311,7 @@ fun TerminalScreen(
                     }
                 },
                 navigationIcon = {
-                    IconButton(onClick = onNavigateBack) {
+                    IconButton(onClick = { showExitConfirmDialog = true }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Volver")
                     }
                 },
@@ -492,8 +498,53 @@ fun TerminalScreen(
 
             BuildResultOverlay(
                 buildSuccess = uiState.buildSuccess,
+                canCopyLog = !uiState.buildFailureLog.isNullOrBlank(),
+                onCopyLog = viewModel::copyBuildLogToClipboard,
                 onDismiss = viewModel::clearBuildResult
             )
+
+            if (showExitConfirmDialog) {
+                AlertDialog(
+                    onDismissRequest = { showExitConfirmDialog = false },
+                    title = { Text("Salir del terminal") },
+                    text = { Text("¿Quieres salir de esta pantalla SSH?") },
+                    confirmButton = {
+                        TextButton(
+                            onClick = {
+                                showExitConfirmDialog = false
+                                onNavigateBack()
+                            }
+                        ) {
+                            Text("Salir")
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { showExitConfirmDialog = false }) {
+                            Text("Cancelar")
+                        }
+                    }
+                )
+            }
+
+            if (uiState.showInstallConflictDialog) {
+                AlertDialog(
+                    onDismissRequest = { viewModel.hideInstallConflictDialog() },
+                    title = { Text("Conflicto de instalacion") },
+                    text = {
+                        Text("Ya hay una app instalada con ese paquete. Desinstala primero para evitar conflicto de firma.")
+                    },
+                    confirmButton = {
+                        TextButton(onClick = { viewModel.confirmUninstallForInstallConflict() }) {
+                            Text("Desinstalar")
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { viewModel.hideInstallConflictDialog() }) {
+                            Text("Cancelar")
+                        }
+                    }
+                )
+            }
 
             // Diálogo para crear proyecto
             if (uiState.showCreateProjectDialog) {

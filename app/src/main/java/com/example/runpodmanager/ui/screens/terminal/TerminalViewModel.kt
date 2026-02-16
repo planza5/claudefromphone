@@ -1,6 +1,8 @@
 package com.example.runpodmanager.ui.screens.terminal
 
 import android.content.BroadcastReceiver
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
@@ -28,6 +30,7 @@ import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 private const val TAG = "TerminalViewModel"
+private const val REMOTE_BUILD_LOG_PATH = "/tmp/runpod_build.log"
 
 data class TerminalUiState(
     val host: String = "",
@@ -47,10 +50,12 @@ data class TerminalUiState(
     val isDownloadingApk: Boolean = false,
     val downloadProgress: Float = 0f,
     val buildSuccess: Boolean? = null, // null = no result, true = success, false = error
+    val buildFailureLog: String? = null,
     // Diálogos de gestión de proyectos
     val showCreateProjectDialog: Boolean = false,
     val showRenameProjectDialog: Boolean = false,
     val showDeleteProjectDialog: Boolean = false,
+    val showInstallConflictDialog: Boolean = false,
     val projectToManage: String? = null,  // Proyecto a renombrar/eliminar
     val newProjectName: String = "",       // Input del usuario
     val isCreatingProject: Boolean = false,
@@ -68,6 +73,7 @@ class TerminalViewModel @Inject constructor(
 
     private val _uiState = MutableStateFlow(TerminalUiState())
     val uiState: StateFlow<TerminalUiState> = _uiState.asStateFlow()
+    private val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
 
     private fun isPackageInstalled(packageName: String): Boolean = try {
         context.packageManager.getPackageInfo(packageName, 0)
@@ -252,7 +258,7 @@ class TerminalViewModel @Inject constructor(
 
     fun selectProject(project: String) {
         viewModelScope.launch {
-            sshManager.sendCommand("cd $project\n")
+            sshManager.sendCommand("cd $project && codex\n")
             _uiState.update { it.copy(selectedProject = project).resetProjectState() }
             checkAppInstallStatus(project)
             checkApkAvailable(project)
@@ -359,15 +365,20 @@ class TerminalViewModel @Inject constructor(
 
         viewModelScope.launch {
             Log.d(TAG, "Poniendo isBuilding = true")
-            _uiState.update { it.copy(isBuilding = true, isApkAvailable = null, buildSuccess = null) }
+            _uiState.update {
+                it.copy(
+                    isBuilding = true,
+                    isApkAvailable = null,
+                    buildSuccess = null,
+                    buildFailureLog = null
+                )
+            }
             Log.d(TAG, "Estado actual isBuilding = ${_uiState.value.isBuilding}")
 
-            val command = "/workspace/compilar.sh $project; echo \"EXIT_CODE:\$?\""
+            val command = "printf \"sdk.dir=/workspace/persist/android-sdk\\n\" > $project/local.properties; /workspace/compilar.sh $project > $REMOTE_BUILD_LOG_PATH 2>&1; echo \"EXIT_CODE:\$?\""
             Log.d(TAG, "Ejecutando build: $command")
 
             sshManager.executeCommand(command).onSuccess { output ->
-                Log.d(TAG, "Build output: $output")
-
                 // Extraer código de salida
                 val exitCode = output.lines()
                     .lastOrNull { it.startsWith("EXIT_CODE:") }
@@ -382,12 +393,16 @@ class TerminalViewModel @Inject constructor(
                     _uiState.update { it.copy(isBuilding = false, buildSuccess = true) }
                     checkApkAvailable(project)
                 } else {
+                    viewModelScope.launch {
+                        val failureLog = fetchBuildFailureLog()
+                        _uiState.update { it.copy(buildFailureLog = failureLog) }
+                    }
                     // Build fallido
                     _uiState.update {
                         it.copy(
                             isBuilding = false,
                             buildSuccess = false,
-                            errorMessage = "Build failed (exit code: $exitCode)"
+                            errorMessage = "Build failed (exit code: $exitCode). Log remoto: $REMOTE_BUILD_LOG_PATH"
                         )
                     }
                 }
@@ -397,6 +412,7 @@ class TerminalViewModel @Inject constructor(
                     it.copy(
                         isBuilding = false,
                         buildSuccess = false,
+                        buildFailureLog = null,
                         errorMessage = "Build error: ${e.message}"
                     )
                 }
@@ -404,12 +420,31 @@ class TerminalViewModel @Inject constructor(
         }
     }
 
+    private suspend fun fetchBuildFailureLog(): String? {
+        val command = "if [ -f $REMOTE_BUILD_LOG_PATH ]; then tail -n 400 $REMOTE_BUILD_LOG_PATH; fi"
+        return sshManager.executeCommand(command).getOrNull()?.takeIf { it.isNotBlank() }
+    }
+
     fun clearBuildResult() {
-        _uiState.update { it.copy(buildSuccess = null) }
+        _uiState.update { it.copy(buildSuccess = null, buildFailureLog = null) }
+    }
+
+    fun copyBuildLogToClipboard() {
+        val log = _uiState.value.buildFailureLog
+        if (log.isNullOrBlank()) {
+            _uiState.update { it.copy(errorMessage = "No build log available to copy") }
+            return
+        }
+        clipboard.setPrimaryClip(ClipData.newPlainText("build-log", log))
+        _uiState.update { it.copy(errorMessage = "Build log copied to clipboard") }
     }
 
     fun installApk() {
         val project = _uiState.value.selectedProject ?: return
+        if (_uiState.value.isAppInstalled == true) {
+            _uiState.update { it.copy(showInstallConflictDialog = true) }
+            return
+        }
         val apkPath = "$project/app/build/outputs/apk/debug/app-debug.apk"
 
         viewModelScope.launch {
@@ -457,6 +492,15 @@ class TerminalViewModel @Inject constructor(
                 }
             }
         }
+    }
+
+    fun hideInstallConflictDialog() {
+        _uiState.update { it.copy(showInstallConflictDialog = false) }
+    }
+
+    fun confirmUninstallForInstallConflict() {
+        hideInstallConflictDialog()
+        uninstallApp()
     }
 
     private fun launchApkInstall(apkFile: File) {
@@ -545,7 +589,7 @@ class TerminalViewModel @Inject constructor(
 
         viewModelScope.launch {
             _uiState.update { it.copy(isCreatingProject = true) }
-            val command = "cp -r /workspace/projects/nodelete /workspace/projects/$name"
+            val command = "cp -r /workspace/projects/nodelete /workspace/projects/$name && printf \"sdk.dir=/workspace/persist/android-sdk\\n\" > /workspace/projects/$name/local.properties"
             sshManager.executeCommand(command).onSuccess {
                 loadProjects()
                 _uiState.update { it.copy(
